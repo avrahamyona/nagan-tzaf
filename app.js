@@ -479,8 +479,9 @@ $('cFwd10').addEventListener('click', () => { if (ytReady) yt.seekTo(yt.getCurre
 
 /* long-press on video = 2x while held (YouTube style) */
 (function () {
-  const t = $('vidTouch'); let holdTimer = null, ff = false;
+  const t = $('vidTouch'); let holdTimer = null, ff = false, downAt = 0;
   const start = e => {
+    downAt = Date.now();
     holdTimer = setTimeout(() => {
       ff = true; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(2);
       $('ffwd').classList.remove('hidden');
@@ -489,6 +490,7 @@ $('cFwd10').addEventListener('click', () => { if (ytReady) yt.seekTo(yt.getCurre
   const end = () => {
     clearTimeout(holdTimer);
     if (ff) { ff = false; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(1); $('ffwd').classList.add('hidden'); }
+    else if (Date.now() - downAt < 380) togglePlay(); // short tap on the video = play/pause
   };
   t.addEventListener('pointerdown', start);
   t.addEventListener('pointerup', end);
