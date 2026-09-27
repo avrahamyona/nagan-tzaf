@@ -136,26 +136,45 @@ let engine = 'yt'; // 'audio' | 'yt'
 let audioRetry = 0;
 const STREAM_API = localStorage.getItem('nagan_stream_api') || ''; // own proxy when deployed
 
+function pickAudio(j) {
+  const as = ((j && j.audioStreams) || []).filter(a => a.url);
+  if (!as.length) throw new Error('no audio streams');
+  const mp4 = as.filter(a => /audio\/mp4/.test(a.mimeType || ''));
+  return (mp4.length ? mp4 : as).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0].url;
+}
 async function resolveAudioUrl(vid) {
-  const providers = [];
-  if (STREAM_API) providers.push(async () => {
-    const r = await fetch(STREAM_API.replace(/\/$/, '') + '/audio/' + vid);
-    if (!r.ok) throw new Error('proxy ' + r.status);
-    const j = await r.json();
-    if (!j.url) throw new Error('proxy empty');
-    return j.url;
-  });
-  providers.push(async () => {
-    const j = await pipedFetch('/streams/' + vid, 7000);
-    const as = (j.audioStreams || []).filter(a => a.url);
-    if (!as.length) throw new Error('no audio streams');
-    const mp4 = as.filter(a => /audio\/mp4/.test(a.mimeType || ''));
-    const best = (mp4.length ? mp4 : as).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-    return best.url;
-  });
-  for (const p of providers) { try { return await p(); } catch {} }
+  // 1) own proxy, when deployed
+  if (STREAM_API) {
+    try {
+      const r = await fetch(STREAM_API.replace(/\/$/, '') + '/audio/' + vid);
+      if (r.ok) { const j = await r.json(); if (j.url) return j.url; }
+    } catch {}
+  }
+  // 2) race all Piped hosts in parallel - first valid audio stream wins
+  try {
+    return await Promise.any(PIPED_HOSTS.map(base => (async () => {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 9000);
+      try {
+        const r = await fetch(base + '/streams/' + vid, { signal: ctl.signal });
+        clearTimeout(to);
+        if (!r.ok) throw new Error('http ' + r.status);
+        return pickAudio(await r.json());
+      } finally { clearTimeout(to); }
+    })()));
+  } catch {}
   return null;
 }
+
+/* iOS unlock: a media element that was play()ed inside a real user gesture
+   may be played programmatically afterwards - so prime it on the first tap. */
+(function primeAudioUnlock() {
+  const unlock = () => {
+    try { const p = audioEl.play(); if (p && p.then) p.then(() => audioEl.pause()).catch(() => {}); } catch {}
+    document.removeEventListener('pointerdown', unlock, true);
+  };
+  document.addEventListener('pointerdown', unlock, true);
+})();
 
 function useYtEngine(t, startAt) {
   engine = 'yt';
@@ -173,12 +192,28 @@ function loadTrack(t, opts = {}) {
   engine = 'audio';
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
+  // Inside a real tap, start the embed immediately so playback begins at once;
+  // if an ad-free stream resolves, we hand over to it. Otherwise the embed just plays on.
+  const hasGesture = !!(navigator.userActivation && navigator.userActivation.isActive);
+  if (hasGesture && ytReady) {
+    engine = 'yt-pending';
+    yt.loadVideoById(opts.startAt ? { videoId: t.id, startSeconds: opts.startAt } : t.id);
+  }
   resolveAudioUrl(t.id).then(url => {
     if (audioEl.dataset.vid !== t.id || videoMode) return;
-    if (!url) { useYtEngine(t, opts.startAt); return; } // seamless fallback
+    if (!url) { // seamless fallback
+      if (engine === 'yt-pending') engine = 'yt';
+      else useYtEngine(t, opts.startAt);
+      return;
+    }
+    try { yt.pauseVideo(); } catch {}
+    const wasPlaying = engine === 'yt-pending' && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
+    engine = 'audio';
     audioEl.src = url;
     if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
-    audioEl.play().catch(() => syncPlayUI(true));
+    if (wasPlaying || hasGesture) audioEl.play().catch(() => { useYtEngine(t, opts.startAt); });
+    else if (audioEl.src) syncPlayUI(true);
+    else syncPlayUI(true);
   });
 }
 
