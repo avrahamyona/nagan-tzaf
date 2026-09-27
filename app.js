@@ -474,6 +474,27 @@ $('cPlay').addEventListener('click', togglePlay);
 $('mNext').addEventListener('click', next);
 $('cNext').addEventListener('click', next);
 $('cPrev').addEventListener('click', prev);
+$('cBack10').addEventListener('click', () => { if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
+$('cFwd10').addEventListener('click', () => { if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
+
+/* long-press on video = 2x while held (YouTube style) */
+(function () {
+  const t = $('vidTouch'); let holdTimer = null, ff = false;
+  const start = e => {
+    holdTimer = setTimeout(() => {
+      ff = true; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(2);
+      $('ffwd').classList.remove('hidden');
+    }, 380);
+  };
+  const end = () => {
+    clearTimeout(holdTimer);
+    if (ff) { ff = false; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(1); $('ffwd').classList.add('hidden'); }
+  };
+  t.addEventListener('pointerdown', start);
+  t.addEventListener('pointerup', end);
+  t.addEventListener('pointercancel', end);
+  t.addEventListener('pointerleave', end);
+})();
 $('cShuffle').addEventListener('click', () => { state.shuffle = !state.shuffle; save(); paintNow(); toast(state.shuffle ? 'נגינה אקראית 🔀' : 'נגינה לפי הסדר'); });
 $('cRepeat').addEventListener('click', () => {
   state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';

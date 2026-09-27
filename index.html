@@ -12,7 +12,7 @@
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>נגן צף</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -124,9 +124,11 @@
     <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
   </div>
   <div class="controls">
+    <button id="cBack10" class="iconbtn ctl s10" aria-label="אחורה 10 שניות"><svg viewBox="0 0 24 24"><path d="M12 5V2.8c0-.5-.6-.8-1-.4L7.6 5.7c-.3.3-.3.8 0 1.1L11 10c.4.3 1 .1 1-.4V7.1c2.9.2 5.1 2.6 5.1 5.4S14.8 18 12 18s-5.2-2.3-5.2-5.5c0-.4-.4-.8-.9-.8s-.9.4-.9.8C5 16.7 8.1 20 12 20s7-3.1 7-7-3.1-7.9-7-8z" fill="currentColor"/><text x="12.4" y="15.2" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">10</text></svg></button>
     <button id="cPrev" class="iconbtn ctl" aria-label="הקודם"><svg><use href="#i-prev"/></svg></button>
     <button id="cPlay" class="iconbtn play" aria-label="נגן / השהה"><svg><use href="#i-play"/></svg></button>
     <button id="cNext" class="iconbtn ctl" aria-label="הבא"><svg><use href="#i-next"/></svg></button>
+    <button id="cFwd10" class="iconbtn ctl s10" aria-label="קדימה 10 שניות"><svg viewBox="0 0 24 24"><path d="M12 5V2.8c0-.5.6-.8 1-.4l3.4 3.3c.3.3.3.8 0 1.1L13 10c-.4.3-1 .1-1-.4V7.1C9.1 7.3 6.9 9.7 6.9 12.5S9.2 18 12 18s5.2-2.3 5.2-5.5c0-.4.4-.8.9-.8s.9.4.9.8C19 16.7 15.9 20 12 20s-7-3.1-7-7 3.1-7.9 7-8z" fill="currentColor"/><text x="11.6" y="15.2" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">10</text></svg></button>
   </div>
   <div class="subcontrols">
     <button id="cShuffle" class="iconbtn" aria-label="אקראי"><svg><use href="#i-shuffle"/></svg></button>
@@ -167,9 +169,10 @@
   </div>
 </div>
 
-<div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div></div>
+<div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div><div id="vidTouch"></div></div>
+<div id="ffwd" class="ffwd hidden">▶▶ x2</div>
 
 
-<script src="app.js?v=6" defer></script>
+<script src="app.js?v=7" defer></script>
 </body>
 </html>
