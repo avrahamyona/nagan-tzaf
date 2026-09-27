@@ -1,4 +1,36 @@
 'use strict';
+/* ---------- passcode lock (client-side gate; keeps casual visitors out) ---------- */
+const LOCK_HASH = 'a1fb4e703a9ef1fa4936801721ff285a97ac85330856674412e054892afe6972';
+const isUnlocked = () => { try { return localStorage.getItem('nagan_unlocked') === '1'; } catch { return false; } };
+async function sha256(t) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+let lockBuf = '';
+function lockInit() {
+  if (isUnlocked()) return;
+  $('lock').classList.remove('hidden');
+  document.querySelectorAll('#lockPad button').forEach(b => b.addEventListener('click', async () => {
+    const k = b.dataset.k;
+    if (k === 'del') { lockBuf = lockBuf.slice(0, -1); }
+    else if (lockBuf.length < 4) lockBuf += k;
+    document.querySelectorAll('#lockDots span').forEach((d, i) => d.classList.toggle('f', i < lockBuf.length));
+    if (lockBuf.length === 4) {
+      if (await sha256(lockBuf) === LOCK_HASH) {
+        try { localStorage.setItem('nagan_unlocked', '1'); } catch {}
+        $('lock').classList.add('hidden');
+      } else {
+        $('lockErr').classList.add('show');
+        $('lock').classList.add('shake');
+        setTimeout(() => { $('lock').classList.remove('shake'); $('lockErr').classList.remove('show'); }, 1400);
+        lockBuf = '';
+        setTimeout(() => document.querySelectorAll('#lockDots span').forEach(d => d.classList.remove('f')), 350);
+      }
+    }
+  }));
+}
+lockInit();
+
 /* ============ נגן צף — v1 ============
    Static PWA. Playback via the official YouTube IFrame player (hidden, off-screen).
    Search via public Piped API instances with failover; paste-a-link always works.
@@ -444,10 +476,24 @@ $('addNew').addEventListener('click', () => {
   save(); closeSheets(); toast(`נוסף ל"${name}" ✔`);
 });
 
+/* ---------- song/video toggle ---------- */
+let videoMode = false;
+document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('click', () => {
+  videoMode = b.dataset.mode === 'video';
+  document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x === b));
+  document.body.classList.toggle('vid', videoMode);
+  $('ytwrap').classList.toggle('vid', videoMode);
+}));
+
 /* ---------- sheets ---------- */
 function closeSheets() {
   $('sheet').classList.remove('open'); $('addSheet').classList.remove('open'); $('scrim').classList.remove('on');
 }
+const sheetObserver = new MutationObserver(() => {
+  const open = $('sheet').classList.contains('open');
+  $('ytwrap').classList.toggle('vid', videoMode && open);
+});
+sheetObserver.observe($('sheet'), { attributes: true, attributeFilter: ['class'] });
 $('scrim').addEventListener('click', closeSheets);
 $('sheetGrab').addEventListener('click', closeSheets);
 $('addGrab').addEventListener('click', closeSheets);

@@ -107,6 +107,10 @@
 <!-- now playing sheet -->
 <div id="sheet" class="sheet">
   <div class="grabber" id="sheetGrab"></div>
+  <div class="svtoggle" id="svToggle">
+    <button class="sv on" data-mode="song">שיר</button>
+    <button class="sv" data-mode="video">וידאו</button>
+  </div>
   <img id="pArt" class="p-art" alt="">
   <div class="p-metarow">
     <div class="p-meta">
@@ -164,6 +168,21 @@
 </div>
 
 <div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div></div>
+
+<!-- passcode lock -->
+<div id="lock" class="lock hidden">
+  <img src="icon-192.png" class="lock-logo" alt="">
+  <div class="lock-title">נגן צף</div>
+  <div class="lock-sub">הכנס קוד כניסה</div>
+  <div class="dots" id="lockDots"><span></span><span></span><span></span><span></span></div>
+  <div class="pad" id="lockPad">
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <span></span><button data-k="0">0</button><button data-k="del" class="del">⌫</button>
+  </div>
+  <div class="lock-err" id="lockErr">קוד שגוי, נסה שוב</div>
+</div>
 
 <script src="app.js" defer></script>
 </body>
