@@ -219,26 +219,3 @@ body.vid .p-art{display:none}
 }
 #ytwrap.vid iframe{width:100%!important;height:100%!important}
 
-/* passcode lock, iOS style */
-.lock{
-  position:fixed;inset:0;z-index:200;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
-  padding:20px;
-}
-.lock-logo{width:84px;height:84px;border-radius:20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(250,45,72,.3)}
-.lock-title{font-size:26px;font-weight:800;margin-bottom:4px}
-.lock-sub{font-size:14px;color:var(--muted);margin-bottom:26px}
-.dots{display:flex;gap:16px;margin-bottom:30px}
-.dots span{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--muted);transition:background .12s}
-.dots span.f{background:var(--text);border-color:var(--text)}
-.pad{display:grid;grid-template-columns:repeat(3,78px);gap:14px}
-.pad button{
-  width:78px;height:78px;border-radius:50%;background:var(--fill);
-  font-size:30px;font-weight:400;color:var(--text);
-}
-.pad button:active{background:var(--fill2)}
-.pad button.del{background:transparent;font-size:24px}
-.lock-err{color:var(--red);font-size:14px;margin-top:24px;opacity:0;transition:opacity .2s}
-.lock-err.show{opacity:1}
-.lock.shake .dots{animation:shake .4s}
-@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(10px)}60%{transform:translateX(-7px)}80%{transform:translateX(7px)}}
