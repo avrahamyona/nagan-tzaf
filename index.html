@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="נגן צף">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png?v=9>
+<link rel="apple-touch-icon" href="icon-180.png?v=9>
 <title>נגן צף</title>
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -45,6 +45,10 @@
       <input id="searchInput" type="search" inputmode="search" enterkeyhint="search"
         placeholder="שירים, אמנים, או קישור יוטיוב" autocomplete="off">
       <button id="clearSearch" class="xbtn hidden" aria-label="נקה"><svg><use href="#i-x"/></svg></button>
+    </div>
+    <div class="seg" id="segMode">
+      <button class="segb on" data-mode="songs">שירים</button>
+      <button class="segb" data-mode="artists">אמנים</button>
     </div>
     <div id="netNote" class="netnote hidden"></div>
     <div id="homeHint" class="empty">
@@ -169,10 +173,30 @@
   </div>
 </div>
 
+<!-- artist page (Apple Music style) -->
+<div id="artistSheet" class="asheet hidden">
+  <div class="ascroll">
+    <div class="ahero">
+      <div class="abanner" id="aBanner"></div>
+      <button id="aClose" class="iconbtn aclose" aria-label="סגור"><svg><use href="#i-x"/></svg></button>
+      <div class="ahero-bot">
+        <img id="aAvatar" class="aavatar" alt="">
+        <div class="anames"><div id="aName" class="aname"></div><div id="aSubs" class="asubs"></div></div>
+      </div>
+    </div>
+    <div class="aactions">
+      <button id="aPlay" class="pillbtn"><svg><use href="#i-play"/></svg> נגן</button>
+      <button id="aShuffle" class="pillbtn"><svg><use href="#i-shuffle"/></svg> ערבוב</button>
+    </div>
+    <div id="aBody"></div>
+    <div style="height:calc(130px + var(--safe-b))"></div>
+  </div>
+</div>
+
 <div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div><div id="vidTouch"></div></div>
 <div id="ffwd" class="ffwd hidden">▶▶ x2</div>
 
 
-<script src="app.js?v=8" defer></script>
+<script src="app.js?v=9" defer></script>
 </body>
 </html>
