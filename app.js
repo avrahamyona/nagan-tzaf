@@ -129,12 +129,73 @@ window.onYouTubeIframeAPIReady = function () {
   document.head.appendChild(s);
 })();
 
-function loadTrack(t) {
-  if (!t) return;
+/* ---------- audio engine: ad-free direct streams, embed as fallback ---------- */
+const audioEl = document.createElement('audio');
+audioEl.preload = 'none';
+let engine = 'yt'; // 'audio' | 'yt'
+let audioRetry = 0;
+const STREAM_API = localStorage.getItem('nagan_stream_api') || ''; // own proxy when deployed
+
+async function resolveAudioUrl(vid) {
+  const providers = [];
+  if (STREAM_API) providers.push(async () => {
+    const r = await fetch(STREAM_API.replace(/\/$/, '') + '/audio/' + vid);
+    if (!r.ok) throw new Error('proxy ' + r.status);
+    const j = await r.json();
+    if (!j.url) throw new Error('proxy empty');
+    return j.url;
+  });
+  providers.push(async () => {
+    const j = await pipedFetch('/streams/' + vid, 7000);
+    const as = (j.audioStreams || []).filter(a => a.url);
+    if (!as.length) throw new Error('no audio streams');
+    const mp4 = as.filter(a => /audio\/mp4/.test(a.mimeType || ''));
+    const best = (mp4.length ? mp4 : as).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+    return best.url;
+  });
+  for (const p of providers) { try { return await p(); } catch {} }
+  return null;
+}
+
+function useYtEngine(t, startAt) {
+  engine = 'yt';
+  try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
   lastCur = -1;
-  if (ytReady) yt.loadVideoById(t.id);
+  if (ytReady) yt.loadVideoById(startAt ? { videoId: t.id, startSeconds: startAt } : t.id);
   else pendingLoad = t.id;
 }
+
+function loadTrack(t, opts = {}) {
+  if (!t) return;
+  lastCur = -1;
+  if (videoMode) { useYtEngine(t, opts.startAt); return; }
+  // song mode: ad-free direct audio first, official embed as graceful fallback
+  engine = 'audio';
+  audioEl.dataset.vid = t.id;
+  audioRetry = 0;
+  resolveAudioUrl(t.id).then(url => {
+    if (audioEl.dataset.vid !== t.id || videoMode) return;
+    if (!url) { useYtEngine(t, opts.startAt); return; } // seamless fallback
+    audioEl.src = url;
+    if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
+    audioEl.play().catch(() => syncPlayUI(true));
+  });
+}
+
+audioEl.addEventListener('ended', () => advance(1, true));
+audioEl.addEventListener('play', () => syncPlayUI(false));
+audioEl.addEventListener('pause', () => syncPlayUI(true));
+audioEl.addEventListener('error', () => {
+  const t = current();
+  if (!t || videoMode || audioEl.dataset.vid !== t.id) return;
+  if (audioRetry++ < 1) { // one fresh resolve, then embed
+    resolveAudioUrl(t.id).then(url => {
+      if (url && audioEl.dataset.vid === t.id && !videoMode) { audioEl.src = url; audioEl.play().catch(() => {}); }
+      else useYtEngine(t);
+    });
+  } else useYtEngine(t);
+});
+const activeAudio = () => engine === 'audio' && !videoMode;
 
 function onPlayerState(st) {
   if (st === YT.PlayerState.PLAYING) { syncPlayUI(false); }
@@ -185,7 +246,13 @@ const prev = () => {
   advance(-1, false);
 };
 function togglePlay() {
-  if (!current()) return;
+  const t = current();
+  if (!t) return;
+  if (activeAudio()) {
+    if (!audioEl.src || audioEl.dataset.vid !== t.id) { loadTrack(t); return; }
+    if (audioEl.paused) audioEl.play().catch(() => {}); else audioEl.pause();
+    return;
+  }
   if (!ytReady) return;
   const st = yt.getPlayerState();
   if (st === YT.PlayerState.PLAYING) yt.pauseVideo(); else yt.playVideo();
@@ -208,30 +275,41 @@ function updateMediaSession() {
 }
 try {
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => ytReady && yt.playVideo());
-    navigator.mediaSession.setActionHandler('pause', () => ytReady && yt.pauseVideo());
+    navigator.mediaSession.setActionHandler('play', () => { if (activeAudio()) audioEl.play().catch(() => {}); else ytReady && yt.playVideo(); });
+    navigator.mediaSession.setActionHandler('pause', () => { if (activeAudio()) audioEl.pause(); else ytReady && yt.pauseVideo(); });
     navigator.mediaSession.setActionHandler('nexttrack', next);
     navigator.mediaSession.setActionHandler('previoustrack', prev);
-    navigator.mediaSession.setActionHandler('seekto', d => { if (ytReady && d.seekTime != null) yt.seekTo(d.seekTime, true); });
+    navigator.mediaSession.setActionHandler('seekto', d => {
+      if (d.seekTime == null) return;
+      if (activeAudio()) audioEl.currentTime = d.seekTime;
+      else if (ytReady) yt.seekTo(d.seekTime, true);
+    });
   }
 } catch {}
 
 /* ---------- progress clock: poll-based, because onStateChange is unreliable on some embeds ---------- */
 let lastCur = -1, endArmed = false;
 setInterval(() => {
-  if (!ytReady || !current()) return;
-  const d = yt.getDuration ? (yt.getDuration() || 0) : 0;
-  const c = yt.getCurrentTime ? (yt.getCurrentTime() || 0) : 0;
-  // playing = the clock is moving
-  const playing = c > lastCur + 0.05;
-  lastCur = c;
-  syncPlayUI(!playing);
+  if (!current()) return;
+  let d = 0, c = 0, paused = true;
+  if (activeAudio()) {
+    if (!audioEl.src) return;
+    d = audioEl.duration || 0; c = audioEl.currentTime || 0; paused = audioEl.paused;
+  } else {
+    if (!ytReady) return;
+    d = yt.getDuration ? (yt.getDuration() || 0) : 0;
+    c = yt.getCurrentTime ? (yt.getCurrentTime() || 0) : 0;
+    // playing = the clock is moving (embed events are unreliable on some devices)
+    paused = !(c > lastCur + 0.05);
+    lastCur = c;
+  }
+  syncPlayUI(paused);
   if (!seeking) {
     if (d > 0) $('seek').value = Math.round((c / d) * 1000);
     $('tCur').textContent = fmt(c); $('tDur').textContent = fmt(d);
   }
-  // end-of-track detection without events
-  if (d > 2 && c >= d - 0.7) {
+  // end-of-track detection without events (audio 'ended' also fires, this is belt+braces)
+  if (d > 2 && c >= d - 0.7 && !paused) {
     if (!endArmed) { endArmed = true; setTimeout(() => { endArmed = false; }, 3000); advance(1, true); }
   }
   try {
@@ -270,8 +348,7 @@ function paintNow() {
 function restoreLast() {
   const t = current();
   if (!t) return;
-  // restore paused: cue only, no autoplay
-  try { yt.cueVideoById(t.id); } catch {}
+  // restore paused: nothing loads until the user presses play (audio resolves then)
   paintNow(); syncPlayUI(true);
 }
 
@@ -491,10 +568,40 @@ $('addNew').addEventListener('click', () => {
 /* ---------- song/video toggle ---------- */
 let videoMode = false;
 document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('click', () => {
-  videoMode = b.dataset.mode === 'video';
+  const toVideo = b.dataset.mode === 'video';
+  if (toVideo === videoMode) return;
+  const t = current();
+  let pos = 0, wasPlaying = false;
+  if (t) {
+    if (videoMode) { // leaving video (yt) -> song (audio)
+      pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
+      wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
+      try { yt.pauseVideo(); } catch {}
+    } else { // leaving song (audio) -> video (yt)
+      pos = audioEl.src ? (audioEl.currentTime || 0) : 0;
+      wasPlaying = !!(audioEl.src && !audioEl.paused);
+      try { audioEl.pause(); } catch {}
+    }
+  }
+  videoMode = toVideo;
   document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x === b));
   document.body.classList.toggle('vid', videoMode);
-  $('ytwrap').classList.toggle('vid', videoMode);
+  $('ytwrap').classList.toggle('vid', videoMode && $('sheet').classList.contains('open'));
+  if (t) {
+    if (videoMode) {
+      useYtEngine(t, pos);
+      if (!wasPlaying) setTimeout(() => { try { yt.pauseVideo(); } catch {} }, 1400);
+    } else {
+      engine = 'audio'; audioEl.dataset.vid = t.id;
+      resolveAudioUrl(t.id).then(url => {
+        if (audioEl.dataset.vid !== t.id || videoMode) return;
+        if (!url) { useYtEngine(t, pos); return; }
+        audioEl.src = url;
+        try { audioEl.currentTime = pos; } catch {}
+        if (wasPlaying) audioEl.play().catch(() => syncPlayUI(true));
+      });
+    }
+  }
 }));
 
 /* ---------- sheets ---------- */
@@ -518,8 +625,8 @@ $('cPlay').addEventListener('click', togglePlay);
 $('mNext').addEventListener('click', next);
 $('cNext').addEventListener('click', next);
 $('cPrev').addEventListener('click', prev);
-$('cBack10').addEventListener('click', () => { if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
-$('cFwd10').addEventListener('click', () => { if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
+$('cBack10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
+$('cFwd10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
 
 /* long-press on video = 2x while held (YouTube style) */
 (function () {
@@ -550,6 +657,7 @@ $('cRepeat').addEventListener('click', () => {
 $('cAdd').addEventListener('click', () => { const t = current(); if (t) openAddSheet(t); });
 $('vol').addEventListener('input', () => {
   state.volume = +$('vol').value; save();
+  audioEl.volume = state.volume / 100;
   if (ytReady && yt.setVolume) yt.setVolume(state.volume);
 });
 $('vol').value = state.volume;
@@ -557,7 +665,8 @@ if (IS_IOS) { const vr = document.querySelector('.volrow'); if (vr) vr.style.dis
 const seekEl = $('seek');
 seekEl.addEventListener('input', () => { seeking = true; });
 seekEl.addEventListener('change', () => {
-  if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
+  if (activeAudio()) { if (audioEl.duration) audioEl.currentTime = (seekEl.value / 1000) * audioEl.duration; }
+  else if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
   seeking = false;
 });
 
