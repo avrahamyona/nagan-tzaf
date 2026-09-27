@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="נגן צף">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>נגן צף</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="icon-192.png" alt="" class="logo">
+    <h1>נגן צף</h1>
+  </div>
+  <button id="infoBtn" class="iconbtn" title="אודות" aria-label="אודות">ℹ️</button>
+</header>
+
+<div class="searchwrap">
+  <div class="searchbox">
+    <span class="sicon">🔍</span>
+    <input id="searchInput" type="search" inputmode="search" enterkeyhint="search"
+      placeholder="חיפוש שיר, זמר... או הדביקת קישור יוטיוב" autocomplete="off">
+    <button id="clearSearch" class="iconbtn hidden" aria-label="נקה">✕</button>
+  </div>
+  <div id="netNote" class="netnote hidden"></div>
+</div>
+
+<nav class="tabs">
+  <button class="tab on" data-tab="search">חיפוש</button>
+  <button class="tab" data-tab="playlists">הרשימות שלי</button>
+</nav>
+
+<main id="main">
+  <section id="view-search" class="view on">
+    <div id="homeHint" class="empty">
+      <div class="big">🎵</div>
+      <h2>מה בא לך לשמוע?</h2>
+      <p>חפש שיר או זמר, או הדבק קישור של יוטיוב - ונתחיל לנגן.</p>
+      <p class="dim">בלי פרסומות · הרשימות נשמרות אצלך במכשיר</p>
+    </div>
+    <div id="results" class="list"></div>
+  </section>
+
+  <section id="view-playlists" class="view">
+    <div class="rowbtns">
+      <button id="newPlaylistBtn" class="btn">＋ רשימה חדשה</button>
+    </div>
+    <div id="playlists" class="list"></div>
+  </section>
+
+  <section id="view-playlist" class="view">
+    <div class="pl-head">
+      <button id="plBack" class="iconbtn" aria-label="חזרה">→</button>
+      <div class="pl-title">
+        <h2 id="plName"></h2>
+        <span id="plCount" class="dim"></span>
+      </div>
+      <button id="plRename" class="iconbtn" title="שנה שם">✏️</button>
+      <button id="plDelete" class="iconbtn" title="מחק רשימה">🗑️</button>
+    </div>
+    <div class="rowbtns" id="plActions">
+      <button id="plPlayAll" class="btn primary">▶ נגן הכל</button>
+      <button id="plShufflePlay" class="btn">🔀 אקראי</button>
+    </div>
+    <div id="plSongs" class="list"></div>
+  </section>
+</main>
+
+<!-- floating mini player -->
+<div id="mini" class="mini hidden">
+  <img id="mArt" alt="">
+  <div class="m-meta" id="mMeta">
+    <div id="mTitle" class="m-title"></div>
+    <div id="mArtist" class="m-artist"></div>
+  </div>
+  <button id="mPlay" class="iconbtn big" aria-label="נגן / השהה">▶</button>
+  <button id="mNext" class="iconbtn big" aria-label="הבא">⏭</button>
+</div>
+
+<nav class="bottompad"></nav>
+
+<!-- full player sheet -->
+<div id="sheet" class="sheet">
+  <div class="grabber" id="sheetGrab"></div>
+  <img id="pArt" class="p-art" alt="">
+  <div class="p-meta">
+    <div id="pTitle" class="p-title"></div>
+    <div id="pArtist" class="p-artist"></div>
+  </div>
+  <div class="seekrow">
+    <span id="tCur">0:00</span>
+    <input id="seek" type="range" min="0" max="1000" value="0">
+    <span id="tDur">0:00</span>
+  </div>
+  <div class="controls">
+    <button id="cShuffle" class="iconbtn big" aria-label="אקראי">🔀</button>
+    <button id="cPrev" class="iconbtn big" aria-label="הקודם">⏮</button>
+    <button id="cPlay" class="iconbtn play" aria-label="נגן / השהה">▶</button>
+    <button id="cNext" class="iconbtn big" aria-label="הבא">⏭</button>
+    <button id="cRepeat" class="iconbtn big" aria-label="חזרה">🔁</button>
+  </div>
+  <div class="sheetbtns">
+    <button id="cAdd" class="btn">＋ הוסף לרשימה</button>
+    <a id="cOpenYT" class="btn ghost" target="_blank" rel="noopener">פתח ביוטיוב ↗</a>
+  </div>
+</div>
+<div id="scrim" class="scrim"></div>
+
+<!-- add-to-playlist sheet -->
+<div id="addSheet" class="sheet small">
+  <div class="grabber" id="addGrab"></div>
+  <h3>הוסף לרשימה</h3>
+  <div id="addList" class="list"></div>
+  <button id="addNew" class="btn">＋ רשימה חדשה</button>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- iOS tip -->
+<div id="iosTip" class="iostip hidden">
+  <b>טיפ לאייפון 🍏</b>
+  כדי לשמוע עם מסך כבוי: נעלו את המכשיר בזמן הנגינה. אם הנגינה נעצרת - לחצו ▶ במסך הנעילה או במרכז הבקרה, והיא תמשיך ברקע.
+  <button id="iosTipOk">הבנתי</button>
+</div>
+
+<!-- info modal -->
+<div id="infoModal" class="modal hidden">
+  <div class="card">
+    <h3>נגן צף 🎵</h3>
+    <p>נגן מוזיקה אישי שמנגן מיוטיוב דרך הנגן הרשמי - בלי פרסומות, עם רשימות השמעה שנשמרות אצלך במכשיר.</p>
+    <p class="dim">טיפ: אפשר להוסיף לאפליקציה למסך הבית דרך כפתור השיתוף בספארי ← "הוסף למסך הבית".</p>
+    <p class="dim">הפרויקט פרטי ואישי. לא שייך ליוטיוב או גוגל.</p>
+    <button id="infoClose" class="btn primary">סגור</button>
+  </div>
+</div>
+
+<div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "נגן צף",
+  "short_name": "נגן צף",
+  "description": "נגן מוזיקה אישי מיוטיוב - בלי פרסומות, עם רשימות השמעה ונגינה ברקע",
+  "lang": "he",
+  "dir": "rtl",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1014",
+  "theme_color": "#0f1014",
+  "start_url": "./",
+  "scope": "./",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
