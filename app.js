@@ -209,9 +209,10 @@ setInterval(() => {
 const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 
 /* ---------- UI: now playing ---------- */
+function setIcon(btn, name) { const u = btn.querySelector('use'); if (u) u.setAttribute('href', '#i-' + name); }
 function syncPlayUI(paused) {
-  $('mPlay').textContent = paused ? '▶' : '⏸';
-  $('cPlay').textContent = paused ? '▶' : '⏸';
+  setIcon($('mPlay'), paused ? 'play' : 'pause');
+  setIcon($('cPlay'), paused ? 'play' : 'pause');
   try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = paused ? 'paused' : 'playing'; } catch {}
   paintRows();
 }
@@ -227,7 +228,7 @@ function paintNow() {
   $('cOpenYT').href = 'https://music.youtube.com/watch?v=' + t.id;
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
-  $('cRepeat').textContent = state.repeat === 'one' ? '🔂' : '🔁';
+  setIcon($('cRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
   updateMediaSession();
   paintRows();
 }
@@ -326,13 +327,13 @@ async function enrichTitle(t) {
 
 /* ---------- playlists ---------- */
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.tabbtn[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
   $('view-search').classList.toggle('on', name === 'search');
   $('view-playlists').classList.toggle('on', name === 'playlists');
   $('view-playlist').classList.remove('on');
   if (name === 'playlists') renderPlaylists();
 }
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+document.querySelectorAll('.tabbtn[data-tab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
 function renderPlaylists() {
   const box = $('playlists'); box.innerHTML = '';
@@ -361,6 +362,9 @@ function openPlaylist(name) {
 }
 function renderPlSongs() {
   const songs = state.playlists[openPl] || [];
+  const artEl = $('plArt');
+  if (songs.length) artEl.innerHTML = `<img src="${thumb(songs[0].id, 'hq')}" alt="">`;
+  else artEl.innerHTML = '<svg><use href="#i-note"/></svg>';
   $('plCount').textContent = songs.length + ' שירים';
   const box = $('plSongs'); box.innerHTML = '';
   if (!songs.length) { box.innerHTML = '<div class="empty"><p>הרשימה ריקה. חפשו שירים ולחצו ＋ כדי להוסיף.</p></div>'; return; }
@@ -451,6 +455,12 @@ $('cRepeat').addEventListener('click', () => {
   toast(state.repeat === 'off' ? 'בלי חזרה' : state.repeat === 'all' ? 'חזרה על הרשימה 🔁' : 'חזרה על השיר 🔂');
 });
 $('cAdd').addEventListener('click', () => { const t = current(); if (t) openAddSheet(t); });
+$('vol').addEventListener('input', () => {
+  state.volume = +$('vol').value; save();
+  if (ytReady && yt.setVolume) yt.setVolume(state.volume);
+});
+$('vol').value = state.volume;
+if (IS_IOS) { const vr = document.querySelector('.volrow'); if (vr) vr.style.display = 'none'; } // iOS web can't set volume
 const seekEl = $('seek');
 seekEl.addEventListener('input', () => { seeking = true; });
 seekEl.addEventListener('change', () => {
