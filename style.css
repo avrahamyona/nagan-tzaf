@@ -152,7 +152,7 @@ main{padding-bottom:calc(120px + var(--safe-b))}
 #seek{width:100%;appearance:none;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--fill2);outline:none;direction:ltr}
 #seek::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:26px;height:26px;border-radius:50%;
   background:var(--text);box-shadow:0 1px 5px rgba(0,0,0,.3)}
-.times{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:5px}
+.times{display:flex;justify-content:space-between;direction:ltr;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:5px}
 
 .controls{display:flex;align-items:center;justify-content:center;gap:44px;margin:16px 0 4px}
 .iconbtn.ctl{width:56px;height:56px}

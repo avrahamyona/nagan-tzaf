@@ -110,6 +110,7 @@ window.onYouTubeIframeAPIReady = function () {
 
 function loadTrack(t) {
   if (!t) return;
+  lastCur = -1;
   if (ytReady) yt.loadVideoById(t.id);
   else pendingLoad = t.id;
 }
@@ -194,13 +195,24 @@ try {
   }
 } catch {}
 
-/* ---------- progress clock ---------- */
+/* ---------- progress clock: poll-based, because onStateChange is unreliable on some embeds ---------- */
+let lastCur = -1, endArmed = false;
 setInterval(() => {
-  if (!ytReady || seeking) return;
-  const d = yt.getDuration ? yt.getDuration() : 0;
-  const c = yt.getCurrentTime ? yt.getCurrentTime() : 0;
-  if (d > 0) $('seek').value = Math.round((c / d) * 1000);
-  $('tCur').textContent = fmt(c); $('tDur').textContent = fmt(d);
+  if (!ytReady || !current()) return;
+  const d = yt.getDuration ? (yt.getDuration() || 0) : 0;
+  const c = yt.getCurrentTime ? (yt.getCurrentTime() || 0) : 0;
+  // playing = the clock is moving
+  const playing = c > lastCur + 0.05;
+  lastCur = c;
+  syncPlayUI(!playing);
+  if (!seeking) {
+    if (d > 0) $('seek').value = Math.round((c / d) * 1000);
+    $('tCur').textContent = fmt(c); $('tDur').textContent = fmt(d);
+  }
+  // end-of-track detection without events
+  if (d > 2 && c >= d - 0.7) {
+    if (!endArmed) { endArmed = true; setTimeout(() => { endArmed = false; }, 3000); advance(1, true); }
+  }
   try {
     if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && d > 0)
       navigator.mediaSession.setPositionState({ duration: d, position: Math.min(c, d), playbackRate: 1 });
