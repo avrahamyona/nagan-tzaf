@@ -1,4 +1,4 @@
-const APP_VERSION = 'v69';
+const APP_VERSION = 'v70';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -177,27 +177,57 @@ function fillArtistPortrait(card, name, chId = '') {
   });
 }
 async function searchLyrics(q) {
-  // lyric-line search: worker scrapes a web search engine for candidates and
-  // confirms them against LRCLIB's lyric text (LRCLIB q= alone is metadata-only).
+  const words = normTxt(q).split(' ').filter(w => w.length > 1);
+  if (!words.length) return [];
+  const matchedLine = it => {
+    const lines = String(it.plainLyrics || '').split('\n').map(x => x.trim()).filter(Boolean);
+    return lines.find(line => words.every(w => normTxt(line).includes(w))) || '';
+  };
+  const matches = [], seen = new Set();
+  const add = it => {
+    const line = matchedLine(it);
+    const title = it.trackName || '', artist = it.artistName || '';
+    const key = normTxt(artist + '|' + title);
+    if (line && title && artist && !seen.has(key)) { seen.add(key); matches.push({ title, artist, line }); }
+  };
+  // The worker may have confirmed lyric matches already. If it cannot find
+  // candidates, discover song titles through video search, then verify each
+  // against LRCLIB's full lyric text rather than displaying an unproven hit.
   try {
-    const r0 = await fetch(STREAM_API + '/lyrics?q=' + encodeURIComponent(q));
-    if (r0.ok) {
-      const j0 = await r0.json();
-      if (j0.matches && j0.matches.length) return j0.matches;
+    const r = await fetch(STREAM_API + '/lyrics?q=' + encodeURIComponent(q));
+    if (r.ok) (await r.json()).matches?.forEach(x => {
+      if (x.title && x.artist && x.line && words.every(w => normTxt(x.line).includes(w))) {
+        const key = normTxt(x.artist + '|' + x.title);
+        if (!seen.has(key)) { seen.add(key); matches.push(x); }
+      }
+    });
+  } catch {}
+  if (matches.length >= 5) return matches;
+  try {
+    const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
+    if (r.ok) (await r.json()).slice(0, 12).forEach(add);
+  } catch {}
+  if (matches.length >= 5) return matches;
+  try {
+    const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=videos');
+    const candidates = (j.items || []).filter(x => x.type === 'stream').slice(0, 8);
+    for (const item of candidates) {
+      if (matches.length >= 5) break;
+      const title = String(item.title || '').replace(/\s*\([^)]*(?:prod\.?|official|lyric|video)[^)]*\)\s*/gi, ' ').trim();
+      const parts = title.split(/\s+[-–]\s+/);
+      if (parts.length < 2) continue;
+      const artist = parts.shift().trim(), track = parts.join(' - ').trim();
+      if (!artist || !track) continue;
+      const url = 'https://lrclib.net/api/search?track_name=' + encodeURIComponent(track) + '&artist_name=' + encodeURIComponent(artist);
+      try {
+        const r = await fetch(url);
+        if (r.ok) (await r.json()).slice(0, 4).forEach(add);
+      } catch {}
     }
   } catch {}
-  const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
-  if (!r.ok) throw new Error('lrclib ' + r.status);
-  const j = await r.json();
-  const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-  return (Array.isArray(j) ? j : []).slice(0, 8).map(it => {
-    const lyr = (it.plainLyrics || '').toLowerCase();
-    if (!lyr || !words.every(w => lyr.includes(w))) return null;
-    const lines = (it.plainLyrics || '').split('\n').map(s => s.trim()).filter(Boolean);
-    const line = lines.find(l => words.every(w => l.toLowerCase().includes(w))) || '';
-    return { title: it.trackName || '', artist: it.artistName || '', line };
-  }).filter(x => x && x.title && x.artist && x.line);
+  return matches;
 }
+
 async function searchPlaylists(q, filter = 'music_albums') {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + filter, 8000);
   return (j.items || []).filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId);
@@ -618,7 +648,7 @@ function renderLyricSnippet(el, line, q) {
   let first = -1, last = -1;
   words.forEach((w, i) => { if (isQ(w)) { if (first < 0) first = i; last = i; } });
   if (first < 0) { el.textContent = '\u201C' + line + '\u201D'; return; }
-  const a = Math.max(0, first - 2), b = Math.min(words.length, last + 3);
+  const a = Math.max(0, first - 2), b = Math.min(words.length, last + 4);
   el.innerHTML = '\u201C' + (a > 0 ? '\u2026 ' : '')
     + words.slice(a, b).map(w => isQ(w) ? '<b>' + escHtml(w) + '</b>' : escHtml(w)).join(' ')
     + (b < words.length ? ' \u2026' : '') + '\u201D';
@@ -2289,7 +2319,7 @@ function renderPlTracks() {
   const box = $('plTracks'); box.innerHTML = '';
   if (!songs.length) { box.innerHTML = '<div class="empty"><p>הרשימה ריקה. חפשו שירים ולחצו ••• כדי להוסיף.</p></div>'; return; }
   songs.forEach((t, i) => box.appendChild(trackRow(t, {
-    onPlay: () => playQueue(songs, i),
+    onPlay: () => playQueue(songs, i), artistLink: true,
     sheet: openPlKind === 'pl' ? { onRemove: () => { songs.splice(i, 1); save(); renderPlTracks(); renderLibrary(); paintPlArt($('plArt'), songs); } } : {},
   })));
 }
@@ -2365,7 +2395,7 @@ async function openAlbum(a) {
     const box = $('alTracks'); box.replaceChildren();
     if (!alTracks.length) { box.innerHTML = '<div class="empty"><p>רשימת השירים של האלבום לא זמינה כרגע.</p></div>'; return; }
     alTracks.forEach((t, i) => box.appendChild(trackRow(t, {
-      num: i + 1, noArt: true,
+      num: i + 1, noArt: true, artistLink: true,
       onPlay: () => playQueue(alTracks, i),
     })));
   } catch { if (seq === alSeq) $('alTracks').innerHTML = '<div class="empty"><p>לא הצלחתי לטעון את השירים של האלבום כרגע.</p></div>'; }
@@ -2533,8 +2563,8 @@ async function runSearch(q, pill) {
       return;
     }
     // top / songs — incremental: paint as each source lands (songs first), don't gate on slow ones
-    const jobs = { songs: within(searchMusicCached(q), 17000), lyrics: within(searchLyrics(q), 17000) };
-    if (pill === 'top') { jobs.artists = within(searchChannels(q), 17000); jobs.albums = within(searchPlaylists(q, 'music_albums'), 17000); }
+    const jobs = { songs: within(searchMusicCached(q), 17000), lyrics: within(searchLyrics(q), 17000), albums: within(searchPlaylists(q, 'music_albums'), 17000) };
+    if (pill === 'top') jobs.artists = within(searchChannels(q), 17000);
     const res = {};
     let songsDone = false, lyricsDone = false, searchFailed = false;
     const clearLoading = () => { if (box.querySelector('.js-loading')) box.replaceChildren(); };
@@ -2551,7 +2581,11 @@ async function runSearch(q, pill) {
       if (k === 'songs') { songsDone = true; paintSearchSongs(); }
       if (k === 'lyrics') { lyricsDone = true; paintSearchLyrics(); }
       if (k === 'artists' && pill === 'top' && res.artists.length && !$('resArtistHit')) {
-        const ah = artistHit(res.artists[0]); ah.id = 'resArtistHit'; box.prepend(ah);
+        const ah = artistHit(res.artists[0]); ah.id = 'resArtistHit';
+        const albumRows = box.querySelector('.js-albums');
+        const albumHeading = box.querySelector('.secttl.js-albums');
+        if (albumRows && albumHeading && normTxt(res.albums?.[0]?.title) === normTxt(q)) albumRows.after(ah);
+        else box.prepend(ah);
       }
       if (k === 'albums') paintSearchAlbums();
       hideNetNote(); done();
@@ -2582,6 +2616,7 @@ async function runSearch(q, pill) {
         row.querySelector('.t').textContent = x.title;
         row.querySelector('.a').textContent = x.artist;
         renderLyricSnippet(row.querySelector('.lyrsnip'), x.line, q);
+        row.querySelector('.lyrsnip').prepend(document.createTextNode('מילים: '));
         row.addEventListener('click', async () => {
           try {
             const songs = await searchMusic(x.artist + ' ' + x.title);
@@ -2593,12 +2628,28 @@ async function runSearch(q, pill) {
       });
     };
     const paintSearchAlbums = () => {
-      if (seq !== searchSeq || pill !== 'top' || !res.albums || !res.albums.length) return;
+      if (seq !== searchSeq || !res.albums?.length) return;
       box.querySelectorAll('.js-albums').forEach(x => x.remove());
+      const nq = normTxt(q);
+      const exact = res.albums.filter(a => normTxt(a.title) === nq);
+      if (exact.length) {
+        const h = document.createElement('h2'); h.className = 'secttl js-albums'; h.textContent = 'אלבומים';
+        const wrap = document.createElement('div'); wrap.className = 'js-albums';
+        exact.slice(0, 3).forEach(a => {
+          const row = document.createElement('button'); row.type = 'button'; row.className = 'row album-search-row';
+          const image = document.createElement('img'); image.src = a.thumb || ''; image.alt = '';
+          const meta = document.createElement('div'); meta.className = 'meta';
+          const title = document.createElement('div'); title.className = 't'; title.textContent = a.title;
+          const artist = document.createElement('div'); artist.className = 'a'; artist.textContent = 'אלבום · ' + (a.artistName || '');
+          meta.append(title, artist); row.append(image, meta);
+          row.addEventListener('click', () => openAlbum(a)); wrap.appendChild(row);
+        });
+        box.prepend(wrap); box.prepend(h); return;
+      }
+      if (pill !== 'top') return;
       const h = document.createElement('h2'); h.className = 'secttl js-albums'; h.textContent = 'אלבומים';
       box.appendChild(h);
-      const wrap = document.createElement('div');
-      wrap.className = 'hscroll js-albums';
+      const wrap = document.createElement('div'); wrap.className = 'hscroll js-albums';
       res.albums.slice(0, 10).forEach(a => wrap.appendChild(albumCardEl(a)));
       box.appendChild(wrap);
     };
@@ -2727,7 +2778,7 @@ function renderArtistBody(songs, albums, videos) {
     const { sec, body, heading } = sectionEl('שירים מובילים');
     heading.disabled = songs.length <= 8;
     heading.addEventListener('click', () => sectionTracks('שירים של ' + artistName, songs));
-    songs.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+    songs.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(songs, i) })));
     box.appendChild(sec);
   }
   if (visibleAlbums.length) {
