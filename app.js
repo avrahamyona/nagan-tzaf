@@ -1,4 +1,4 @@
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -297,7 +297,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 (function verChip() {
   const c = document.createElement('div');
-  c.id = 'verChip'; c.textContent = APP_VERSION; c.title = 'גרסה';
+  c.id = 'verChip'; c.innerHTML = '<span class="edot" id="verChipDot" style="background:#8e8e93"></span>' + APP_VERSION; c.title = 'גרסה';
   c.addEventListener('click', () => showStreamDiag());
   document.body.appendChild(c);
 })();
@@ -315,7 +315,10 @@ function paintEngineBadge() {
   const map = { audio: ['שמע ישיר', '#34c759'], clip: ['קליפ ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
   const m = map[engine] || ['', ''];
   b.innerHTML = (m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' : '') + APP_VERSION;
+  const vd = document.getElementById('verChipDot');
+  if (vd && m[1]) vd.style.background = m[1];
 }
+paintEngineBadge();
 const STREAM_API_DEFAULT = 'https://avi-music-audio.avi-music.workers.dev';
 const STREAM_API = new URLSearchParams(location.search).get('streamapi') || localStorage.getItem('nagan_stream_api') || STREAM_API_DEFAULT;
 
@@ -1474,7 +1477,7 @@ async function renderListen() {
 
   /* ---- network sections: paint as they land ---- */
   const fillSec = (mkSec, q, cardFn, limit) => {
-    const { sec, body } = mkSec;
+    const { sec, body } = mkSec();
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
     searchMusicCached(q).then(items => {
