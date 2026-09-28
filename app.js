@@ -167,7 +167,7 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v21b';
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
@@ -633,8 +633,42 @@ $('cPrev').addEventListener('click', prev);
 $('pFav').addEventListener('click', () => { const t = current(); if (t) toggleFav(t); });
 $('pDots').addEventListener('click', () => { const t = current(); if (t) openSongSheet(t); });
 $('pArtist').addEventListener('click', () => { const t = current(); if (t && t.ch) openArtist(t.ch, t.artist, ''); });
-$('cBack10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
-$('cFwd10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
+// tap = +/-10s; long-press = 2x scrub (forward) / stepped rewind (back), restore on release
+function scrubHold(btn, dir) {
+  let mode = null, pressTimer = null, rewTimer = null, longFired = false;
+  const release = () => {
+    clearTimeout(pressTimer); pressTimer = null;
+    if (mode === 'audio2x') { try { audioEl.playbackRate = 1; } catch {} }
+    else if (mode === 'yt2x') { try { yt.setPlaybackRate(1); } catch {} }
+    else if (mode === 'rew') { clearInterval(rewTimer); rewTimer = null; }
+    mode = null;
+  };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    longFired = false;
+    pressTimer = setTimeout(() => {
+      longFired = true;
+      if (dir > 0) {
+        if (activeAudio()) { mode = 'audio2x'; try { audioEl.playbackRate = 2; } catch {} }
+        else if (ytReady) { mode = 'yt2x'; try { yt.setPlaybackRate(2); } catch {} }
+      } else {
+        mode = 'rew';
+        rewTimer = setInterval(() => {
+          if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 0.35);
+          else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 0.35), true);
+        }, 100);
+      }
+    }, 280);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => btn.addEventListener(ev, release));
+  btn.addEventListener('click', e => {
+    if (longFired) { longFired = false; e.stopImmediatePropagation(); e.preventDefault(); return; }
+    if (dir > 0) { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); }
+    else { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); }
+  });
+}
+scrubHold($('cBack10'), -1);
+scrubHold($('cFwd10'), 1);
 (function () {
   const t = $('vidTouch'); let holdTimer = null, ff = false, downAt = 0;
   const start = () => {
