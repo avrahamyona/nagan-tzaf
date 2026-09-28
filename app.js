@@ -221,7 +221,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v26b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -292,7 +292,7 @@ function scheduleAudioRetry(t) {
       if (!url) { scheduleAudioRetry(t); return; }
       const pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
       const playing = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-      try { yt.pauseVideo(); } catch {}
+      try { yt.stopVideo(); } catch {}
       engine = 'audio'; playGen++; paintEngineBadge();
       audioEl.dataset.vid = t.id;
       audioEl.src = url;
@@ -313,7 +313,7 @@ function useClipEngine(t, startAt, autoplay) {
   clearTimeout(ytRetryTimer);
   engine = 'clip'; paintEngineBadge(); playGen++;
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
-  try { yt.pauseVideo(); } catch {}
+  try { yt.stopVideo(); } catch {}
   clipEl.dataset.vid = t.id;
   clipEl.style.display = 'block';
   $('ytplayer').style.display = 'none';
@@ -348,7 +348,7 @@ function loadTrack(t, opts = {}) {
       scheduleAudioRetry(t);
       return;
     }
-    try { yt.pauseVideo(); } catch {}
+    try { yt.stopVideo(); } catch {}
     const wasPlaying = engine === 'yt-pending' && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
     engine = 'audio'; paintEngineBadge();
     audioEl.src = url;
@@ -384,9 +384,14 @@ audioEl.addEventListener('error', () => {
 const activeAudio = () => (engine === 'audio' && !videoMode) || engine === 'clip';
 
 function onPlayerState(st) {
+  if (st === YT.PlayerState.PLAYING && (engine === 'audio' || engine === 'clip')) {
+    // The embed won a buffering race against the direct engine - kill it (double playback + ads).
+    try { yt.stopVideo(); } catch {}
+    return;
+  }
   if (st === YT.PlayerState.PLAYING) { syncPlayUI(false); }
   else if (st === YT.PlayerState.PAUSED) { syncPlayUI(true); }
-  else if (st === YT.PlayerState.ENDED) { advance(1, true); }
+  else if (st === YT.PlayerState.ENDED) { if (engine === 'yt') advance(1, true); }
 }
 let errGuard = 0;
 function onTrackError() {
@@ -867,7 +872,7 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
       } else {
         pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
         wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-        try { yt.pauseVideo(); } catch {}
+        try { yt.stopVideo(); } catch {}
       }
     } else {
       pos = audioEl.src ? (audioEl.currentTime || 0) : 0;
