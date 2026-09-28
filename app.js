@@ -1,4 +1,4 @@
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -178,7 +178,7 @@ let state = {
   fav: {},            // videoId -> true
   favArtists: {},     // chId -> {name, avatar}
   albums: {},         // plId -> {plId,title,thumb,sub}
-  history: [],        // recent tracks, newest first (max 40)
+  history: [],        // recent tracks, newest first (max 60)
   recentSearches: [], // recent search terms, newest first (max 12)
   station: null,      // {seed, name} when radio autoplay is on
   resume: null,       // {pos, playing, vid} last known playback point
@@ -387,6 +387,7 @@ function scheduleAudioRetry(t) {
   }, 45000);
 }
 function useYtEngine(t, startAt) {
+  if (videoMode) { clipUnavailable(); return; }
   engine = 'yt'; paintEngineBadge(); playGen++;
   try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
@@ -394,17 +395,41 @@ function useYtEngine(t, startAt) {
   if (ytReady) yt.loadVideoById(startAt ? { videoId: t.id, startSeconds: startAt } : t.id);
   else pendingLoad = t.id;
 }
+async function resolveClipUrl(vid) {
+  // A visible clip requires a muxed video+audio format. Never hand an audio-only URL to <video>.
+  if (STREAM_API) {
+    try {
+      const base = STREAM_API.replace(/\/$/, '');
+      const r = await fetch(base + '/url/' + vid);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.mime === 'video/mp4' && j.url) return j.url;
+      }
+    } catch {}
+  }
+  try {
+    const j = await pipedFetch('/streams/' + vid, 8000);
+    const muxed = (j.videoStreams || []).filter(v => v.url && v.videoOnly === false && /video\/mp4/i.test(v.mimeType || ''));
+    return muxed.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]?.url || null;
+  } catch { return null; }
+}
+function clipUnavailable() {
+  try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); } catch {}
+  engine = 'clip-unavailable'; paintEngineBadge(); syncPlayUI(true);
+  toast('לא נמצא קליפ ישיר ללא פרסומות. לא נעבור לנגן של יוטיוב.');
+}
 function useClipEngine(t, startAt, autoplay) {
   clearTimeout(ytRetryTimer);
-  engine = 'clip'; paintEngineBadge(); playGen++;
+  engine = 'clip-pending'; paintEngineBadge(); playGen++;
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
   try { yt.stopVideo(); } catch {}
   clipEl.dataset.vid = t.id;
   clipEl.style.display = 'block';
   $('ytplayer').style.display = 'none';
-  resolveAudioUrl(t.id).then(url => {
+  resolveClipUrl(t.id).then(url => {
     if (clipEl.dataset.vid !== t.id || !videoMode) return;
-    if (!url) { useYtEngine(t, startAt); return; }
+    if (!url) { clipUnavailable(); return; }
+    engine = 'clip'; paintEngineBadge();
     clipEl.src = url;
     if (startAt) { try { clipEl.currentTime = startAt; } catch {} }
     if (autoplay !== false) clipEl.play().catch(() => syncPlayUI(true));
@@ -449,7 +474,7 @@ clipEl.addEventListener('pause', () => syncPlayUI(true));
 clipEl.addEventListener('error', () => {
   const t = current();
   if (!t || !videoMode || clipEl.dataset.vid !== t.id) return;
-  useYtEngine(t, clipEl.currentTime || 0);
+  clipUnavailable();
 });
 audioEl.addEventListener('ended', () => advance(1, true));
 armAutoResume(audioEl);
@@ -1472,7 +1497,7 @@ async function renderListen() {
   const artistW = new Map();
   h.forEach((t, i) => { if (t.artist) artistW.set(t.artist, (artistW.get(t.artist) || 0) + 1 + i / Math.max(1, h.length)); });
   const topArtists = [...artistW.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
-  const seeds = topArtists.length ? topArtists : ['אייל גולן', 'עומר אדם', 'מושיק עפיה', 'איתי לוי'];
+  const seeds = topArtists;
   const firstByArtist = a => h.find(t => t.artist === a);
 
   const playSearch = async (q, stationName) => {
@@ -1484,17 +1509,16 @@ async function renderListen() {
     } catch { toast('החיפוש לא זמין כרגע'); }
   };
 
-  /* ---- 1. בחירות מובילות עבורך: hero carousel ---- */
-  {
+  /* ---- 1. בחירות מובילות עבורך: driven by this device's actual listening ---- */
+  if (seeds.length) {
     const { sec, body } = sectionEl('בחירות מובילות עבורך', 'hscroll heroes');
-    const heroes = [];
-    const t0 = firstByArtist(seeds[0]);
-    heroes.push({ title: 'המיקס של ' + seeds[0], kicker: 'במיוחד עבורך', desc: [seeds[0], seeds[1], seeds[2]].filter(Boolean).join(', ') + ' ועוד', grad: GRADS[5], img: t0 ? sqThumb(t0.id, 'hq') : '', tap: () => playSearch(seeds[0], 'המיקס של ' + seeds[0]) });
-    if (seeds[1]) { const t1 = firstByArtist(seeds[1]); heroes.push({ title: seeds[1] + ' וכמוהו', kicker: 'במיוחד עבורך', desc: 'שירים בסגנון שאתה אוהב', grad: GRADS[0], img: t1 ? sqThumb(t1.id, 'hq') : '', tap: () => playSearch(seeds[1], seeds[1] + ' וכמוהו') }); }
-    heroes.push({ title: 'תחנת השירים שלך', kicker: 'במיוחד עבורך', desc: 'השירים, האמנים והסגנונות שלך', grad: GRADS[4], img: '', tap: () => document.querySelector('[data-tab=radio]') && playSearch(seeds[0] || 'להיטים ישראלים', 'הרדיו שלך') });
-    if (seeds[2]) heroes.push({ title: 'חוזרים אל ' + seeds[2], kicker: 'במיוחד עבורך', desc: 'עוד ממה ששמעת לאחרונה', grad: GRADS[2], img: firstByArtist(seeds[2]) ? sqThumb(firstByArtist(seeds[2]).id, 'hq') : '', tap: () => playSearch(seeds[2], seeds[2]) });
-    heroes.push({ title: 'שירי מוטיבציה', kicker: 'במיוחד עבורך', desc: 'אנרגיה לכל היום', grad: GRADS[1], img: '', tap: () => playSearch('שירי מוטיבציה בעברית') });
-    heroes.forEach(hc => body.appendChild(heroCard(hc)));
+    seeds.slice(0, 6).forEach((name, i) => {
+      const track = firstByArtist(name);
+      body.appendChild(heroCard({ title: 'המיקס של ' + name, kicker: 'במיוחד עבורך',
+        desc: 'עוד שירים של ' + name, grad: GRADS[i % GRADS.length],
+        img: track ? sqThumb(track.id, 'hq') : '',
+        tap: () => playSearch(name, 'המיקס של ' + name) }));
+    });
     box.appendChild(sec);
   }
 
@@ -1544,17 +1568,18 @@ async function renderListen() {
   /* 5. כולם מקשיבים ל...: wide cards */
   fillSec(() => sectionEl('כולם מקשיבים ל...', 'hscroll wide'), 'להיטים ישראלים 2026', (t, items) => wideCapCard(t, () => playQueue(items, items.indexOf(t))));
 
-  /* 6. פלייליסטים במיוחד עבורך: mood heroes */
-  {
+  /* 6. פלייליסטים במיוחד עבורך: no generic mood labels without evidence in listening history. */
+  if (h.length >= 2) {
     const { sec, body } = sectionEl('פלייליסטים במיוחד עבורך', 'hscroll heroes');
-    [
-      { title: 'אנרגיה', desc: 'להתניע את היום', grad: 'linear-gradient(135deg,#ff5e3a,#ff2d55)', q: 'שירי אנרגיה מקפיצים בעברית' },
-      { title: 'רגוע', desc: 'שירים רגועים להירגע', grad: 'linear-gradient(135deg,#30b0c7,#5856d6)', q: 'שירים רגועים ישראלים' },
-      { title: 'מסיבה', desc: 'הלהיטים הכי מקפיצים', grad: 'linear-gradient(135deg,#bf5af2,#ff375f)', q: 'שירי מסיבה ישראלים להיטים' },
-      { title: 'ים תיכוני', desc: 'מזרחית בלב מלא', grad: 'linear-gradient(135deg,#ff9f0a,#ff453a)', q: 'מוזיקה מזרחית להיטים' },
-      { title: 'עצב', desc: 'שירים מחבקים', grad: 'linear-gradient(135deg,#0a84ff,#5e5ce6)', q: 'שירי עצב ישראלים' },
-    ].forEach(m => body.appendChild(heroCard({ title: m.title, kicker: 'במיוחד עבורך', desc: m.desc, grad: m.grad, img: '', tap: () => playSearch(m.q, m.title) })));
-    box.appendChild(sec);
+    seeds.slice(0, 5).forEach((name, i) => {
+      const related = h.filter(t => t.artist === name);
+      if (!related.length) return;
+      body.appendChild(heroCard({ title: name, kicker: 'במיוחד עבורך',
+        desc: related.slice(0, 2).map(t => t.title).join(' · '),
+        grad: GRADS[i % GRADS.length], img: sqThumb(related[0].id, 'hq'),
+        tap: () => playSearch(name, name) }));
+    });
+    if (body.children.length) box.appendChild(sec);
   }
 
   /* 7. אומנים מועדפים: circle cards */
@@ -2005,12 +2030,18 @@ const input = $('searchInput');
 input.addEventListener('input', () => {
   $('clearSearch').classList.toggle('hidden', !input.value);
   clearTimeout(searchTimer); clearTimeout(suggTimer);
-  const q = input.value.trim();
-  if (!q) { $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden'); hideNetNote(); hideSugg(); renderSearchHome(); return; }
-  suggTimer = setTimeout(() => showSuggestions(q), 180);
-  searchTimer = setTimeout(() => { hideSugg(); runSearch(q, curPill); }, 250);
+  hideSugg();
+  if (!input.value.trim()) {
+    $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden');
+    hideNetNote(); renderSearchHome();
+  }
 });
-input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); clearTimeout(suggTimer); hideSugg(); runSearch(input.value.trim(), curPill); } });
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault(); hideSugg(); input.blur();
+    runSearch(input.value.trim(), curPill);
+  }
+});
 $('clearSearch').addEventListener('click', () => { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); });
 
 async function runSearch(q, pill) {
