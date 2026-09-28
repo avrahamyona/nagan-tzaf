@@ -1,4 +1,4 @@
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v64';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2271,7 +2271,9 @@ async function openAlbum(a) {
     $('alTitle').textContent = name.replace(/^Album [–-] /i, '');
     $('alArtist').textContent = uploader;
     $('alArtist').classList.toggle('link', !!uploader);
-    $('alMeta').textContent = alTracks.length + ' שירים';
+    $('alMeta').textContent = alTracks.length ? alTracks.length + ' שירים' : 'רשימת שירים לא זמינה';
+    $('alPlay').style.display = alTracks.length ? '' : 'none';
+    $('alShuffle').style.display = alTracks.length ? '' : 'none';
     const box = $('alTracks'); box.replaceChildren();
     if (!alTracks.length) { box.innerHTML = '<div class="empty"><p>רשימת השירים של האלבום לא זמינה כרגע.</p></div>'; return; }
     alTracks.forEach((t, i) => box.appendChild(trackRow(t, {
@@ -2282,7 +2284,7 @@ async function openAlbum(a) {
 }
 $('alArtist').addEventListener('click', () => {
   const name = $('alArtist').textContent;
-  if (name) { closePlayer(); searchArtistAndOpen(name); }
+  if (name) { closePlayer(); if (alCur?.artistId) openArtist(alCur.artistId, name, ''); else searchArtistAndOpen(name); }
 });
 $('alPlay').addEventListener('click', () => { if (alTracks.length) playQueue(alTracks, 0); });
 $('alShuffle').addEventListener('click', () => { if (!alTracks.length) return; state.shuffle = true; playQueue(alTracks, Math.floor(Math.random() * alTracks.length)); });
@@ -2548,7 +2550,7 @@ async function openArtist(chId, name, avatar) {
   try { channel = await pipedFetch('/channel/' + chId, 8000); } catch {}
   if (seq !== aSeq) return;
   if (channel && !channel.error) {
-    if (channel.name) { const dn = channel.name.replace(/ - Topic$/i, ''); $('aName').textContent = dn; aCur.name = dn; }
+    if (channel.name) { const dn = channel.name.replace(/ - Topic$/i, ''); if (!name || normTxt(dn) === normTxt(name)) { $('aName').textContent = dn; aCur.name = dn; } }
     if (channel.avatarUrl) aCur.avatar = channel.avatarUrl;
     // Channel banners may be abstract branding or thin text strips; a portrait
     // is a better hero source when the image service supports a larger size.
@@ -2573,18 +2575,31 @@ async function openArtist(chId, name, avatar) {
     }
   })());
   jobs.push((async () => {
+    const matchesArtist = a => a.plId && (a.artistId === chId ||
+      normTxt(a.artistName) === normTxt(name) || normTxt(a.artistName) === normTxt(aCur.name));
+    let tabAlbums = [];
     if (channel && Array.isArray(channel.tabs)) {
       const rel = channel.tabs.find(t => /releases/i.test(t.name || ''));
       if (rel && rel.data) {
         try {
           const j = await pipedFetch('/channels/tabs?data=' + encodeURIComponent(rel.data) + '&id=' + chId, 8000);
           const list = Array.isArray(j) ? j : (j.content || []);
-          albums = list.filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId && (a.artistId === chId || normTxt(a.artistName) === normTxt(name)));
-          if (albums.length) return;
+          tabAlbums = list.filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(matchesArtist);
         } catch {}
       }
     }
-    try { albums = (await searchPlaylists(name, 'music_albums')).filter(a => a.artistId === chId || normTxt(a.artistName) === normTxt(name)); } catch {}
+    let searched = [], nextpage = '';
+    try {
+      const j = await pipedFetch('/search?q=' + encodeURIComponent(name) + '&filter=music_albums', 8000);
+      searched = (j.items || []).filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(matchesArtist);
+      nextpage = j.nextpage && j.nextpage !== 'null' ? j.nextpage : '';
+    } catch {}
+    const byId = new Map();
+    for (const a of [...tabAlbums, ...searched]) if (!byId.has(a.plId)) byId.set(a.plId, a);
+    albums = [...byId.values()];
+    // Search returns at most one page (often 20 records) even when the artist
+    // has more releases. Keep the continuation for an explicit "see all" tap.
+    if (seq === aSeq) aCur.albumNextpage = nextpage;
   })());
   jobs.push((async () => {
     try {
@@ -2609,8 +2624,9 @@ function renderArtistBody(songs, albums, videos) {
   const box = $('aBody'); box.innerHTML = '';
   aSongs = songs;
   const artistName = aCur?.name || 'האמן';
-  if (albums.length) {
-    const latest = albums[0];
+  const visibleAlbums = albums;
+  if (visibleAlbums.length) {
+    const latest = visibleAlbums[0];
     const lc = document.createElement('div');
     lc.className = 'latestcard';
     lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">אלבום נבחר</div><div class="lc-t"></div><div class="lc-s dim"></div></div>`;
@@ -2626,11 +2642,11 @@ function renderArtistBody(songs, albums, videos) {
     songs.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
     box.appendChild(sec);
   }
-  if (albums.length) {
-    const { sec, body, heading } = sectionEl('אלבומים', 'hscroll');
-    heading.disabled = albums.length <= 12;
-    heading.addEventListener('click', () => openArtistAlbums(albums, 'אלבומים של ' + artistName));
-    albums.slice(0, 12).forEach(a => body.appendChild(albumCardEl(a)));
+  if (visibleAlbums.length) {
+    const { sec, body, heading } = sectionEl('אלבומים ו-EP', 'hscroll');
+    heading.disabled = visibleAlbums.length <= 12 && !aCur?.albumNextpage;
+    heading.addEventListener('click', () => openArtistAlbums(visibleAlbums, 'אלבומים ו-EP של ' + artistName, aCur?.albumNextpage, aCur?.chId, artistName));
+    visibleAlbums.slice(0, 12).forEach(a => body.appendChild(albumCardEl(a)));
     box.appendChild(sec);
   }
   if (videos.length) {
@@ -2664,17 +2680,37 @@ $('aFav').addEventListener('click', () => {
   setIcon($('aFav'), state.favArtists[aCur.chId] ? 'star-fill' : 'star');
   $('aFav').classList.toggle('on', !!state.favArtists[aCur.chId]);
 });
-function openArtistAlbums(albums, title) {
+async function openArtistAlbums(albums, title, nextpage = '', artistId = '', artistName = '') {
+  const seq = ++alSeq; alTracks = []; alCur = null;
   const box = $('alTracks'); box.replaceChildren();
   $('alArt').src = albums[0]?.thumb || '';
   $('alTitle').textContent = title;
   $('alArtist').textContent = '';
   $('alArtist').classList.remove('link');
-  $('alMeta').textContent = albums.length + ' אלבומים';
+  $('alArt').alt = '';
+  $('alMeta').textContent = albums.length + ' הוצאות';
   $('alPlay').style.display = 'none'; $('alShuffle').style.display = 'none';
   const wrap = document.createElement('div'); wrap.className = 'artist-albums-grid';
+  const seen = new Set(albums.map(a => a.plId));
   albums.forEach(a => wrap.appendChild(albumCardEl(a)));
   box.appendChild(wrap); openPage('page-album');
+  if (!nextpage) return;
+  const more = document.createElement('button'); more.className = 'ppill';
+  more.textContent = 'עוד אלבומים ו-EP'; box.appendChild(more);
+  more.addEventListener('click', async () => {
+    if (!nextpage) return;
+    more.disabled = true; more.textContent = 'טוען...';
+    try {
+      const j = await pipedFetch('/nextpage/search?nextpage=' + encodeURIComponent(nextpage) + '&q=' + encodeURIComponent(artistName) + '&filter=music_albums', 8000);
+      const moreAlbums = (j.items || []).filter(x => x.type === 'playlist' && x.url)
+        .map(mapAlbum).filter(a => a.plId && (a.artistId === artistId || normTxt(a.artistName) === normTxt(artistName)) && !seen.has(a.plId));
+      if (seq !== alSeq) return;
+      moreAlbums.forEach(a => { seen.add(a.plId); wrap.appendChild(albumCardEl(a)); });
+      nextpage = j.nextpage && j.nextpage !== 'null' ? j.nextpage : '';
+      $('alMeta').textContent = seen.size + ' הוצאות';
+      if (!nextpage) more.remove(); else { more.disabled = false; more.textContent = 'עוד אלבומים ו-EP'; }
+    } catch { more.disabled = false; more.textContent = 'נסה שוב לטעון עוד'; }
+  });
 }
 function shareArtist() {
   if (!aCur?.chId) return;
