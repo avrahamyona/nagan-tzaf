@@ -401,3 +401,5 @@ body.vid #ytwrap { display: block; }
 .ahero.noimg .abanner { background: linear-gradient(160deg,#3a3a3e,#17171a); }
 .plph { width: 48px; height: 48px; border-radius: 5px; background: var(--card2); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .plph svg { width: 22px; height: 22px; color: var(--dim); }
+.stph { width: 100%; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.stph span { font-size: 52px; font-weight: 700; color: rgba(255,255,255,.92); }

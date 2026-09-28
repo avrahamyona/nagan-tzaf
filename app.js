@@ -731,7 +731,11 @@ function gradCard(title, color, onTap) {
 function stationCard(name, avatar, onTap) {
   const el = document.createElement('div');
   el.className = 'stationcard';
-  el.innerHTML = `<img loading="lazy" src="${avatar || ''}" alt=""><div class="ct"></div><div class="cs">תחנת ${''}</div>`;
+  const g = GRADS[(name.charCodeAt(0) + name.length) % GRADS.length];
+  el.innerHTML = (avatar
+    ? `<img loading="lazy" src="${avatar}" alt="">`
+    : `<div class="stph" style="background:${g}"><span></span></div>`) + `<div class="ct"></div><div class="cs"></div>`;
+  if (!avatar) el.querySelector('.stph span').textContent = name.trim()[0] || '♪';
   el.querySelector('.ct').textContent = name;
   el.querySelector('.cs').textContent = 'התחנה של ' + name;
   el.addEventListener('click', onTap);
