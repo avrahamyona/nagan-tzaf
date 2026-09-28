@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v32b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
