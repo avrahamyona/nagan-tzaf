@@ -165,13 +165,30 @@ window.onYouTubeIframeAPIReady = function () {
 /* ---------- audio engine: ad-free direct streams, embed fallback ---------- */
 const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
+const clipEl = $('clipEl');
+let userPaused = false;
+let playGen = 0;
+function armAutoResume(el) {
+  el.addEventListener('pause', () => {
+    if (userPaused || el.ended) return;
+    if (!(engine === 'audio' || engine === 'clip')) return;
+    if (el !== M()) return;
+    const g = playGen;
+    [700, 3000].forEach(ms => setTimeout(() => {
+      if (playGen !== g || userPaused) return;
+      if (el.paused && !el.ended) el.play().catch(() => {});
+    }, ms));
+  });
+  el.addEventListener('play', () => { userPaused = false; });
+}
+const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v21c';
+const APP_VERSION = 'v22';
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
-  const map = { audio: ['שמע ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
+  const map = { audio: ['שמע ישיר', '#34c759'], clip: ['קליפ ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
   const m = map[engine] || ['', ''];
   b.innerHTML = m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' + APP_VERSION : '';
 }
@@ -220,17 +237,34 @@ async function resolveAudioUrl(vid) {
 })();
 
 function useYtEngine(t, startAt) {
-  engine = 'yt'; paintEngineBadge();
+  engine = 'yt'; paintEngineBadge(); playGen++;
+  try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
   lastCur = -1;
   if (ytReady) yt.loadVideoById(startAt ? { videoId: t.id, startSeconds: startAt } : t.id);
   else pendingLoad = t.id;
 }
+function useClipEngine(t, startAt, autoplay) {
+  engine = 'clip'; paintEngineBadge(); playGen++;
+  try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
+  try { yt.pauseVideo(); } catch {}
+  clipEl.dataset.vid = t.id;
+  clipEl.style.display = 'block';
+  $('ytplayer').style.display = 'none';
+  resolveAudioUrl(t.id).then(url => {
+    if (clipEl.dataset.vid !== t.id || !videoMode) return;
+    if (!url) { useYtEngine(t, startAt); return; }
+    clipEl.src = url;
+    if (startAt) { try { clipEl.currentTime = startAt; } catch {} }
+    if (autoplay !== false) clipEl.play().catch(() => syncPlayUI(true));
+  });
+}
+
 function loadTrack(t, opts = {}) {
   if (!t) return;
   lastCur = -1;
-  if (videoMode) { useYtEngine(t, opts.startAt); return; }
-  engine = 'audio'; paintEngineBadge();
+  if (videoMode) { useClipEngine(t, opts.startAt, true); return; }
+  engine = 'audio'; paintEngineBadge(); playGen++;
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
   const hasGesture = !!(navigator.userActivation && navigator.userActivation.isActive);
@@ -254,7 +288,17 @@ function loadTrack(t, opts = {}) {
     else syncPlayUI(true);
   });
 }
+clipEl.addEventListener('ended', () => advance(1, true));
+clipEl.addEventListener('play', () => syncPlayUI(false));
+clipEl.addEventListener('pause', () => syncPlayUI(true));
+clipEl.addEventListener('error', () => {
+  const t = current();
+  if (!t || !videoMode || clipEl.dataset.vid !== t.id) return;
+  useYtEngine(t, clipEl.currentTime || 0);
+});
 audioEl.addEventListener('ended', () => advance(1, true));
+armAutoResume(audioEl);
+armAutoResume(clipEl);
 audioEl.addEventListener('play', () => syncPlayUI(false));
 audioEl.addEventListener('pause', () => syncPlayUI(true));
 audioEl.addEventListener('error', () => {
@@ -267,7 +311,7 @@ audioEl.addEventListener('error', () => {
     });
   } else useYtEngine(t);
 });
-const activeAudio = () => engine === 'audio' && !videoMode;
+const activeAudio = () => (engine === 'audio' && !videoMode) || engine === 'clip';
 
 function onPlayerState(st) {
   if (st === YT.PlayerState.PLAYING) { syncPlayUI(false); }
@@ -336,15 +380,15 @@ async function advance(dir, auto) {
 const next = () => advance(1, false);
 const prev = () => {
   if (ytReady && yt.getCurrentTime && yt.getCurrentTime() > 4) { yt.seekTo(0, true); return; }
-  if (activeAudio() && audioEl.currentTime > 4) { audioEl.currentTime = 0; return; }
+  if (activeAudio() && M().currentTime > 4) { M().currentTime = 0; return; }
   advance(-1, false);
 };
 function togglePlay() {
   const t = current();
   if (!t) return;
   if (activeAudio()) {
-    if (!audioEl.src || audioEl.dataset.vid !== t.id) { loadTrack(t, { startAt: takeRestorePos() }); return; }
-    if (audioEl.paused) audioEl.play().catch(() => {}); else audioEl.pause();
+    if (!M().src || M().dataset.vid !== t.id) { loadTrack(t, { startAt: takeRestorePos() }); return; }
+    if (M().paused) { userPaused = false; M().play().catch(() => {}); } else { userPaused = true; M().pause(); }
     return;
   }
   if (!ytReady) return;
@@ -412,13 +456,13 @@ function updateMediaSession() {
 }
 try {
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => { if (activeAudio()) audioEl.play().catch(() => {}); else ytReady && yt.playVideo(); });
-    navigator.mediaSession.setActionHandler('pause', () => { if (activeAudio()) audioEl.pause(); else ytReady && yt.pauseVideo(); });
+    navigator.mediaSession.setActionHandler('play', () => { userPaused = false; if (activeAudio()) M().play().catch(() => {}); else ytReady && yt.playVideo(); });
+    navigator.mediaSession.setActionHandler('pause', () => { userPaused = true; if (activeAudio()) M().pause(); else ytReady && yt.pauseVideo(); });
     navigator.mediaSession.setActionHandler('nexttrack', next);
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('seekto', d => {
       if (d.seekTime == null) return;
-      if (activeAudio()) audioEl.currentTime = d.seekTime;
+      if (activeAudio()) M().currentTime = d.seekTime;
       else if (ytReady) yt.seekTo(d.seekTime, true);
     });
   }
@@ -430,8 +474,8 @@ setInterval(() => {
   if (!current()) return;
   let d = 0, c = 0, paused = true;
   if (activeAudio()) {
-    if (!audioEl.src) return;
-    d = audioEl.duration || 0; c = audioEl.currentTime || 0; paused = audioEl.paused;
+    if (!M().src) return;
+    d = M().duration || 0; c = M().currentTime || 0; paused = M().paused;
   } else {
     if (!ytReady) return;
     d = yt.getDuration ? (yt.getDuration() || 0) : 0;
@@ -638,7 +682,7 @@ function scrubHold(btn, dir) {
   let mode = null, pressTimer = null, rewTimer = null, longFired = false;
   const release = () => {
     clearTimeout(pressTimer); pressTimer = null;
-    if (mode === 'audio2x') { try { audioEl.playbackRate = 1; } catch {} }
+    if (mode === 'audio2x') { try { M().playbackRate = 1; } catch {} }
     else if (mode === 'yt2x') { try { yt.setPlaybackRate(1); } catch {} }
     else if (mode === 'rew') { clearInterval(rewTimer); rewTimer = null; }
     mode = null;
@@ -649,12 +693,12 @@ function scrubHold(btn, dir) {
     pressTimer = setTimeout(() => {
       longFired = true;
       if (dir > 0) {
-        if (activeAudio()) { mode = 'audio2x'; try { audioEl.playbackRate = 2; } catch {} }
+        if (activeAudio()) { mode = 'audio2x'; try { M().playbackRate = 2; } catch {} }
         else if (ytReady) { mode = 'yt2x'; try { yt.setPlaybackRate(2); } catch {} }
       } else {
         mode = 'rew';
         rewTimer = setInterval(() => {
-          if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 0.35);
+          if (activeAudio()) M().currentTime = Math.max(0, M().currentTime - 0.35);
           else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 0.35), true);
         }, 100);
       }
@@ -663,8 +707,8 @@ function scrubHold(btn, dir) {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => btn.addEventListener(ev, release));
   btn.addEventListener('click', e => {
     if (longFired) { longFired = false; e.stopImmediatePropagation(); e.preventDefault(); return; }
-    if (dir > 0) { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); }
-    else { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); }
+    if (dir > 0) { if (activeAudio()) M().currentTime = Math.min(M().duration || 1e9, M().currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); }
+    else { if (activeAudio()) M().currentTime = Math.max(0, M().currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); }
   });
 }
 scrubHold($('cBack10'), -1);
@@ -706,7 +750,7 @@ if (IS_IOS) document.querySelector('.volrow').style.display = 'none';
 const seekEl = $('seek');
 seekEl.addEventListener('input', () => { seeking = true; });
 seekEl.addEventListener('change', () => {
-  if (activeAudio()) { if (audioEl.duration) audioEl.currentTime = (seekEl.value / 1000) * audioEl.duration; }
+  if (activeAudio()) { if (M().duration) M().currentTime = (seekEl.value / 1000) * M().duration; }
   else if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
   seeking = false;
 });
@@ -720,9 +764,15 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   let pos = 0, wasPlaying = false;
   if (t) {
     if (videoMode) {
-      pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
-      wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-      try { yt.pauseVideo(); } catch {}
+      if (engine === 'clip') {
+        pos = clipEl.currentTime || 0;
+        wasPlaying = !clipEl.paused;
+        try { clipEl.pause(); } catch {}
+      } else {
+        pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
+        wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
+        try { yt.pauseVideo(); } catch {}
+      }
     } else {
       pos = audioEl.src ? (audioEl.currentTime || 0) : 0;
       wasPlaying = !!(audioEl.src && !audioEl.paused);
@@ -734,10 +784,10 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   document.body.classList.toggle('vid', videoMode);
   if (t) {
     if (videoMode) {
-      useYtEngine(t, pos);
-      if (!wasPlaying) setTimeout(() => { try { yt.pauseVideo(); } catch {} }, 1400);
+      useClipEngine(t, pos, wasPlaying);
     } else {
-      engine = 'audio'; audioEl.dataset.vid = t.id;
+      try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
+      engine = 'audio'; playGen++; paintEngineBadge(); audioEl.dataset.vid = t.id;
       resolveAudioUrl(t.id).then(url => {
         if (audioEl.dataset.vid !== t.id || videoMode) return;
         if (!url) { useYtEngine(t, pos); return; }
@@ -1370,7 +1420,7 @@ function captureResume() {
   const t = current();
   if (!t) return;
   let c = 0, paused = true;
-  if (activeAudio()) { if (!audioEl.src) return; c = audioEl.currentTime || 0; paused = audioEl.paused; }
+  if (activeAudio()) { if (!M().src) return; c = M().currentTime || 0; paused = M().paused; }
   else { if (!ytReady || !yt.getCurrentTime) return; c = yt.getCurrentTime() || 0; paused = yt.getPlayerState() !== YT.PlayerState.PLAYING; }
   state.resume = { pos: c, playing: !paused, vid: t.id };
 }
@@ -1380,7 +1430,7 @@ document.addEventListener('visibilitychange', () => {
   const t = current();
   if (!t) return;
   // still playing (iOS let the audio run in the background)? just repaint.
-  const stillPlaying = activeAudio() ? (audioEl.src && !audioEl.paused)
+  const stillPlaying = activeAudio() ? (M().src && !M().paused)
     : (ytReady && yt.getPlayerState && yt.getPlayerState() === YT.PlayerState.PLAYING);
   if (stillPlaying) { syncPlayUI(false); paintNow(); return; }
   const r = state.resume;

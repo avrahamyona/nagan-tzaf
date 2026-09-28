@@ -454,3 +454,5 @@ body.vid #ytwrap { display: block; }
 .row.playing .t { color: var(--accent); }
 .engine-badge { display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; color:#8e8e93; margin-top:6px; min-height:14px; }
 .engine-badge .edot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+
+#clipEl { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; border-radius: inherit; z-index: 2; }
