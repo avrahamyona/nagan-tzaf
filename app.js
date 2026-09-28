@@ -1,4 +1,4 @@
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -215,7 +215,7 @@ function save() {
 function pushHistory(t) {
   if (!t || !t.id) return;
   state.history = state.history.filter(x => x.id !== t.id);
-  state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch });
+  state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch, album: t.album || null });
   if (state.history.length > 60) state.history.length = 60;
 }
 const favList = () => state.playlists['שירים אהובים'] || (state.playlists['שירים אהובים'] = []);
@@ -594,40 +594,67 @@ function playQueue(tracks, idx, opts = {}) {
   ensureUpNext();
 }
 
-/* up next: keep at least 10 recommendations queued (Apple Music shows ~10 ahead).
-   Base ranking = YouTube's related/watch-next graph; we re-weight by the artists
-   in local listening history (recent plays weigh more) so the vibe follows him. */
+/* Recommendations are drawn from actual plays and likes on this device.
+   A related item alone is not a taste signal: keep only known artist identities. */
 let upNextFilling = false;
+function tasteArtists() {
+  const weights = new Map(), hist = state.history || [];
+  hist.forEach((t, i) => {
+    if (!t.artist) return;
+    const key = t.ch || normTxt(t.artist);
+    const entry = weights.get(key) || { name: t.artist, ch: t.ch || '', weight: 0 };
+    entry.weight += 1 + (hist.length - i) / Math.max(hist.length, 1);
+    weights.set(key, entry);
+  });
+  Object.entries(state.favArtists || {}).forEach(([ch, a]) => {
+    if (!a?.name) return;
+    const entry = weights.get(ch) || { name: a.name, ch, weight: 0 };
+    entry.weight += 3;
+    weights.set(ch, entry);
+  });
+  return [...weights.values()].sort((a, b) => b.weight - a.weight);
+}
+function artistMatchesTaste(t, artists) {
+  const name = normTxt(t.artist);
+  return artists.some(a => (a.ch && t.ch && a.ch === t.ch) ||
+    (name && normTxt(a.name) && (name === normTxt(a.name) || name.includes(normTxt(a.name)) || normTxt(a.name).includes(name))));
+}
 async function ensureUpNext() {
   if (upNextFilling || state.station || !state.queue.length) return;
   const ahead = state.queue.length - state.qi - 1;
   if (ahead >= 10) return;
-  const seed = state.queue[state.queue.length - 1];
-  if (!seed || !seed.id) return;
+  const seed = state.queue[state.queue.length - 1], artists = tasteArtists();
+  if (!seed?.id || !artists.length) return;
   upNextFilling = true;
   try {
-    const j = await pipedFetch('/streams/' + seed.id, 8000);
-    let rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
     const inQ = new Set(state.queue.map(t => t.id));
-    const w = new Map();
-    const n = Math.max(1, state.history.length);
-    state.history.forEach((h, i) => { if (h.artist) w.set(h.artist, (w.get(h.artist) || 0) + 1 + i / n); });
-    rel = rel.filter(t => !inQ.has(t.id) && !state.lessSuggestions?.[t.id]);
-    rel.sort((a, b) => (w.get(b.artist) || 0) - (w.get(a.artist) || 0));
-    const add = rel.slice(0, 12 - ahead);
-    if (add.length) { state.queue.push(...add); save(); }
-  } catch {}
-  upNextFilling = false;
+    const candidates = [];
+    const add = t => {
+      if (!t?.id || inQ.has(t.id) || state.lessSuggestions?.[t.id] || !artistMatchesTaste(t, artists)) return;
+      inQ.add(t.id); candidates.push(t);
+    };
+    try {
+      const j = await pipedFetch('/streams/' + seed.id, 8000);
+      (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).forEach(add);
+    } catch {}
+    if (candidates.length < 10 - ahead) {
+      const searches = await Promise.allSettled(artists.slice(0, 3).map(a => within(searchMusicCached(a.name), 9000)));
+      searches.forEach(r => { if (r.status === 'fulfilled') r.value.forEach(add); });
+    }
+    if (candidates.length) { state.queue.push(...candidates.slice(0, 12 - ahead)); save(); }
+  } finally { upNextFilling = false; }
 }
 
 async function stationRefill() {
   const st = state.station;
   if (!st) return false;
-  const seed = current();
+  const seed = current(), artists = tasteArtists();
+  if (!seed?.id || !artists.length) return false;
   try {
-    const j = await pipedFetch('/streams/' + (seed ? seed.id : st.seed), 8000);
+    const j = await pipedFetch('/streams/' + seed.id, 8000);
     const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream')
-      .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id) && !state.lessSuggestions?.[t.id]);
+      .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id) &&
+        !state.lessSuggestions?.[t.id] && artistMatchesTaste(t, artists));
     if (!rel.length) return false;
     state.queue = state.queue.concat(rel.slice(0, 12));
     save();
@@ -831,7 +858,7 @@ function paintNow() {
   if (art.dataset.vid !== t.id) { art.dataset.vid = t.id; setArt('maxres'); }
   else if (art.complete && art.naturalWidth === 0) setArt('maxres');
   $('pTitle').textContent = t.title; $('pArtist').textContent = t.artist;
-  $('pArtist').classList.toggle('link', !!t.ch);
+  $('pArtist').classList.toggle('link', !!t.artist);
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
   setIcon($('cRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
@@ -908,6 +935,73 @@ document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click
   if (t.startsWith('page-')) closePage(t); else closeSheet(t);
 }));
 
+/* Album identity comes from the exact playlist membership, never a title-only guess. */
+const albumLookup = new Map();
+async function verifiedAlbumFor(t) {
+  if (!t?.id) return null;
+  if (t.album?.plId) return t.album;
+  if (albumLookup.has(t.id)) return albumLookup.get(t.id);
+  const lookup = (async () => {
+    try {
+      const candidates = await searchPlaylists([t.title, t.artist].filter(Boolean).join(' '), 'music_albums');
+      for (const a of candidates.slice(0, 5)) {
+        if (t.artist && a.artistName) {
+          const ta = normTxt(t.artist), aa = normTxt(a.artistName);
+          const parts = ta.split(' ').filter(w => w.length > 2);
+          if (!aa.includes(ta) && !ta.includes(aa) && !parts.some(w => aa.includes(w))) continue;
+        }
+        try {
+          const { tracks } = await loadAlbumTracks(a);
+          if (tracks.some(x => x.id === t.id)) return a;
+        } catch {}
+      }
+    } catch {}
+    return null;
+  })();
+  albumLookup.set(t.id, lookup);
+  lookup.then(a => { if (!a) albumLookup.delete(t.id); });
+  return lookup;
+}
+let destinationSeq = 0, destinationTrack = null, destinationAlbum = null;
+function openSongDestinationSheet(t) {
+  if (!t?.artist) return;
+  destinationTrack = t; destinationAlbum = t.album?.plId ? t.album : null;
+  const seq = ++destinationSeq;
+  $('destinationArtist').textContent = t.artist;
+  $('destAlbum').classList.toggle('hidden', !destinationAlbum);
+  $('destAlbumLabel').textContent = destinationAlbum ? destinationAlbum.title : '';
+  $('destAlbumStatus').textContent = destinationAlbum ? '' : 'בודק אלבום...';
+  openSheet('destinationSheet');
+  positionDestinationSheet();
+  setTimeout(() => { if (seq === destinationSeq && $('destinationSheet').classList.contains('open')) positionDestinationSheet(); }, 280);
+  if (!destinationAlbum) verifiedAlbumFor(t).then(a => {
+    if (seq !== destinationSeq || destinationTrack?.id !== t.id) return;
+    destinationAlbum = a;
+    $('destAlbum').classList.toggle('hidden', !a);
+    $('destAlbumLabel').textContent = a ? a.title : '';
+    $('destAlbumStatus').textContent = a ? '' : 'אלבום לא זמין לשיר הזה';
+    positionDestinationSheet();
+  });
+}
+function positionDestinationSheet() {
+  const sheet = $('destinationSheet'), anchor = $('pArtist').getBoundingClientRect();
+  const width = Math.min(270, innerWidth - 32), height = sheet.offsetHeight || (destinationAlbum ? 132 : 100);
+  const top = anchor.top >= height + 28 ? anchor.top - height - 12 : anchor.bottom + 12;
+  sheet.style.left = Math.max(16, Math.min(innerWidth - width - 16, anchor.right - width)) + 'px';
+  sheet.style.top = Math.max(16, Math.min(innerHeight - height - 16, top)) + 'px';
+}
+$('destArtist').addEventListener('click', () => {
+  const t = destinationTrack;
+  closeSheet('destinationSheet'); closePlayer();
+  if (!t?.artist) return;
+  if (t.ch) openArtist(t.ch, t.artist, ''); else searchArtistAndOpen(t.artist);
+});
+$('destAlbum').addEventListener('click', () => {
+  const a = destinationAlbum;
+  closeSheet('destinationSheet'); closePlayer();
+  if (a?.plId) openAlbum(a);
+});
+
 let sheetTrack = null, sheetOpts = {};
 function openSongSheet(t, opts = {}) {
   sheetTrack = t; sheetOpts = opts;
@@ -916,7 +1010,7 @@ function openSongSheet(t, opts = {}) {
   $('songSheetHead').querySelector('.a').textContent = t.artist;
   setIcon($('ssFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'בטל אהבתי' : 'אהבתי';
-  $('ssArtist').classList.toggle('hidden', !t.ch && !t.artist);
+  $('ssArtist').classList.toggle('hidden', !t.artist);
   $('ssQueueNext').classList.toggle('hidden', !current());
   $('ssQueueLast').classList.toggle('hidden', !current());
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
@@ -937,7 +1031,7 @@ function toggleFav(t) {
 }
 $('ssFav').addEventListener('click', () => { if (sheetTrack) toggleFav(sheetTrack); closeSheet('songSheet'); });
 $('ssAdd').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack) openAddSheet(sheetTrack); });
-$('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack && sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); });
+$('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack?.artist) { closePlayer(); if (sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); else searchArtistAndOpen(sheetTrack.artist); } });
 $('ssRemove').addEventListener('click', () => { closeSheet('songSheet'); if (sheetOpts.onRemove) sheetOpts.onRemove(); });
 
 function shareSong(t) {
@@ -1081,7 +1175,7 @@ $('cNext').addEventListener('click', next);
 $('cPrev').addEventListener('click', prev);
 $('pFav').addEventListener('click', () => { const t = current(); if (t) toggleFav(t); });
 $('pDots').addEventListener('click', () => { const t = current(); if (t) openSongSheet(t); });
-$('pArtist').addEventListener('click', () => { const t = current(); if (!t || !t.artist) return; closePlayer(); if (t.ch) openArtist(t.ch, t.artist, ''); else searchArtistAndOpen(t.artist); });
+$('pArtist').addEventListener('click', () => openSongDestinationSheet(current()));
 // tap = +/-10s; long-press = 2x scrub (forward) / stepped rewind (back), restore on release
 function scrubHold(btn, dir) {
   let mode = null, pressTimer = null, rewTimer = null, longFired = false;
@@ -1704,18 +1798,17 @@ async function renderListen() {
   box.innerHTML = '';
 
   /* ---- personalization seeds ---- */
-  const artistW = new Map();
-  h.forEach((t, i) => { if (t.artist) artistW.set(t.artist, (artistW.get(t.artist) || 0) + 1 + i / Math.max(1, h.length)); });
-  const topArtists = [...artistW.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
-  const seeds = topArtists;
-  const firstByArtist = a => h.find(t => t.artist === a);
+  const seeds = tasteArtists().map(a => a.name);
+  const firstByArtist = a => h.find(t => normTxt(t.artist) === normTxt(a));
 
   const playSearch = async (q, stationName) => {
     toast('בונה את ' + (stationName || q) + '...');
     try {
       const items = await searchMusic(q);
-      if (items.length) playQueue(items, 0, stationName ? { station: { seed: items[0].id, name: stationName } } : {});
-      else toast('לא נמצאו שירים');
+      const matching = tasteArtists().filter(a => normTxt(a.name) === normTxt(q));
+      const chosen = items.filter(t => artistMatchesTaste(t, matching));
+      if (chosen.length) playQueue(chosen, 0, stationName ? { station: { seed: chosen[0].id, name: stationName } } : {});
+      else toast('לא נמצאו שירים מתאימים');
     } catch { toast('החיפוש לא זמין כרגע'); }
   };
 
@@ -1780,10 +1873,11 @@ async function renderListen() {
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
     searchMusicCached(q).then(items => {
-      allItems = items;
-      heading.disabled = items.length <= (limit || 12);
+      allItems = items.filter(t => artistMatchesTaste(t, tasteArtists()));
+      heading.disabled = allItems.length <= (limit || 12);
       body.innerHTML = '';
-      items.slice(0, limit || 12).forEach(t => body.appendChild(cardFn(t, items)));
+      if (!allItems.length) { sec.remove(); return; }
+      allItems.slice(0, limit || 12).forEach(t => body.appendChild(cardFn(t, allItems)));
     }).catch(() => sec.remove());
   };
 
@@ -1795,10 +1889,11 @@ async function renderListen() {
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
     searchMusicCached('שירים חדשים ישראל').then(items => {
-      allItems = items;
-      heading.disabled = items.length <= 8;
+      allItems = items.filter(t => artistMatchesTaste(t, tasteArtists()));
+      heading.disabled = allItems.length <= 8;
       body.innerHTML = '';
-      items.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(items, items.indexOf(t)) })));
+      if (!allItems.length) { sec.remove(); return; }
+      allItems.slice(0, 8).forEach(t => body.appendChild(trackRow(t, { onPlay: () => playQueue(allItems, allItems.indexOf(t)) })));
     }).catch(() => sec.remove());
   }
 
@@ -1812,7 +1907,7 @@ async function renderListen() {
   if (h.length >= 2) {
     const { sec, body } = sectionEl('פלייליסטים במיוחד עבורך', 'hscroll heroes');
     seeds.slice(0, 5).forEach((name, i) => {
-      const related = h.filter(t => t.artist === name);
+      const related = h.filter(t => normTxt(t.artist) === normTxt(name));
       if (!related.length) return;
       body.appendChild(heroCard({ title: name, kicker: 'במיוחד עבורך',
         desc: related.slice(0, 2).map(t => t.title).join(' · '),
@@ -1956,7 +2051,7 @@ async function renderRadio() {
       }
       const j = await pipedFetch('/streams/' + seed.id, 8000);
       const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
-      const q = [seed, ...rel];
+      const q = [seed, ...rel.filter(t => artistMatchesTaste(t, tasteArtists()))];
       playQueue(q, 0, { station: { seed: seed.id, name: 'הרדיו שלך' } });
     } catch { toast('לא זמין כרגע'); }
   });
@@ -2094,17 +2189,21 @@ async function loadAlbumTracks(a) {
   // but zero relatedStreams. Use playlist metadata from a separate public reader;
   // never fill an album with search guesses or arbitrary similarly named songs.
   if (!/^OLAK5uy_[A-Za-z0-9_-]+$/.test(a.plId)) return { tracks: [], name: a.title, uploader: a.artistName || '' };
-  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 10000);
-  try {
-    const r = await fetch('https://inv.nadeko.net/api/v1/playlists/' + encodeURIComponent(a.plId), { signal: ctl.signal });
-    if (!r.ok) throw new Error('playlist fallback ' + r.status);
-    const data = await r.json();
-    if (data.playlistId !== a.plId || !Array.isArray(data.videos)) throw new Error('playlist identity mismatch');
-    return { tracks: data.videos.filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.videoId || '')).map(v => ({
-      id: v.videoId, title: v.title || '', artist: a.artistName || v.author || '',
-      dur: Number(v.lengthSeconds) || 0, ch: v.authorId || ''
-    })).filter(t => t.title), name: data.title || a.title, uploader: a.artistName || data.author || '' };
-  } finally { clearTimeout(timer); }
+  // Keep the exact-ID guard, and try two public playlist readers when one is unavailable.
+  for (const host of ['https://inv.nadeko.net', 'https://invidious.f5.si']) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 6500);
+    try {
+      const r = await fetch(host + '/api/v1/playlists/' + encodeURIComponent(a.plId), { signal: ctl.signal });
+      if (!r.ok) throw new Error('playlist fallback ' + r.status);
+      const data = await r.json();
+      if (data.playlistId !== a.plId || !Array.isArray(data.videos)) throw new Error('playlist identity mismatch');
+      return { tracks: data.videos.filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.videoId || '')).map(v => ({
+        id: v.videoId, title: v.title || '', artist: a.artistName || v.author || '',
+        dur: Number(v.lengthSeconds) || 0, ch: v.authorId || ''
+      })).filter(t => t.title), name: data.title || a.title, uploader: a.artistName || data.author || '' };
+    } catch {} finally { clearTimeout(timer); }
+  }
+  return { tracks: [], name: a.title, uploader: a.artistName || '' };
 }
 async function openAlbum(a) {
   const seq = ++alSeq;
@@ -2120,7 +2219,7 @@ async function openAlbum(a) {
   try {
     const { tracks, name, uploader } = await loadAlbumTracks(a);
     if (seq !== alSeq) return;
-    alTracks = tracks;
+    alTracks = tracks.map(t => ({ ...t, album: a }));
     $('alTitle').textContent = name.replace(/^Album [–-] /i, '');
     $('alArtist').textContent = uploader;
     $('alArtist').classList.toggle('link', !!uploader);
@@ -2187,9 +2286,29 @@ let curPill = 'top', lastQuery = '';
 })();
 
 
+let searchScope = 'all';
+$('searchScope').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  searchScope = b.dataset.scope;
+  $('searchScope').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  if (lastQuery) runSearch(lastQuery, curPill); else renderSearchHome();
+}));
+const SEARCH_CATEGORIES = [
+  ['מוזיקה עברית', 'מוזיקה עברית', ''],
+  ['מזרחית', 'מוזיקה מזרחית', ''], ['פופ', 'פופ ישראלי', ''], ['מוזיקה יהודית', 'מוזיקה יהודית', ''],
+  ['הופעות', 'הופעות חיות', ''], ['שירי אהבה', 'שירי אהבה', ''], ['רוק', 'רוק ישראלי', ''], ['מוזיקה חדשה', 'שירים חדשים ישראל', '']
+];
 /* Search home shows played songs and artists, never previously typed search words. */
 function renderSearchHome() {
   const box = $('searchHome'); box.replaceChildren();
+  const cats = document.createElement('div'); cats.className = 'search-category-grid';
+  SEARCH_CATEGORIES.forEach(([name, query, image]) => {
+    const button = document.createElement('button'); button.className = 'search-category'; button.type = 'button';
+    button.textContent = name;
+    if (image) { const img = document.createElement('img'); img.src = image; img.alt = ''; button.appendChild(img); }
+    button.addEventListener('click', () => { $('searchInput').value = query; runSearch(query, curPill); });
+    cats.appendChild(button);
+  });
+  if (searchScope === 'all') box.appendChild(cats);
   const recent = (state.history || []).filter(t => t && t.id).slice(0, 12);
   if (recent.length) {
     const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'הושמעו לאחרונה'; box.appendChild(h);
@@ -2238,6 +2357,15 @@ async function runSearch(q, pill) {
   const seq = ++searchSeq;
   const box = $('resBody');
   box.innerHTML = '<div class="empty js-loading"><p>מחפש...</p></div>';
+  if (searchScope === 'library' && !vid) {
+    const saved = [...(state.history || []), ...favList(), ...(state.queue || [])]
+      .filter(t => t?.id && (normTxt(t.title).includes(normTxt(q)) || normTxt(t.artist).includes(normTxt(q))));
+    const seen = new Set(), unique = saved.filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+    box.replaceChildren();
+    if (!unique.length) box.innerHTML = '<div class="empty"><p>לא נמצאו שירים בספריה.</p></div>';
+    else unique.forEach((t, i) => box.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(unique, i) })));
+    return;
+  }
   if (vid) {
     const t = { id: vid, title: 'שיר מיוטיוב', artist: '', dur: 0 };
     box.innerHTML = '';
