@@ -93,13 +93,13 @@ async function searchLyrics(q) {
   if (!r.ok) throw new Error('lrclib ' + r.status);
   const j = await r.json();
   const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-  return (Array.isArray(j) ? j : []).slice(0, 6).map(it => {
-    const lyr = it.plainLyrics || '';
-    const lines = lyr.split('\n').map(s => s.trim()).filter(Boolean);
-    const line = lines.find(l => words.every(w => l.toLowerCase().includes(w)))
-      || lines.find(l => words.some(w => l.toLowerCase().includes(w))) || '';
+  return (Array.isArray(j) ? j : []).slice(0, 8).map(it => {
+    const lyr = (it.plainLyrics || '').toLowerCase();
+    if (!lyr || !words.every(w => lyr.includes(w))) return null;
+    const lines = (it.plainLyrics || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const line = lines.find(l => words.every(w => l.toLowerCase().includes(w))) || '';
     return { title: it.trackName || '', artist: it.artistName || '', line };
-  }).filter(x => x.title && x.artist);
+  }).filter(x => x && x.title && x.artist && x.line);
 }
 async function searchPlaylists(q, filter = 'music_albums') {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + filter, 8000);

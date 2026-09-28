@@ -196,19 +196,37 @@ function parseLyricTitle(t) {
   return t ? { track: t, artist: '' } : null;
 }
 
+function parseVideoTitle(t, uploader) {
+  t = t.replace(/[\(\[][^\)\]]*(official|lyric|video|audio|\u05e7\u05dc\u05d9\u05e4|\u05de\u05d9\u05dc\u05d9\u05dd)[^\)\]]*[\)\]]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const m = t.match(/^(.+?)\s*[-\u2013]\s*(.+)$/);
+  if (m) return { artist: m[1].trim(), track: m[2].trim() };
+  return t ? { track: t, artist: uploader || '' } : null;
+}
+
 async function lyricsSearch(url) {
   const q = (url.searchParams.get('q') || '').trim();
   if (!q) return json({ error: 'q required' }, 400);
   const words = q.toLowerCase().split(/\s+/).filter(x => x.length > 1);
   const cands = [];
-  try {
-    const r = await fetch('https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent('"' + q + '" lyrics'), {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
-    });
-    const html = await r.text();
-    const titles = [...html.matchAll(/class='result-link'>([^<]+)</g)].map(x => x[1]).slice(0, 8);
-    for (const t of titles) { const c = parseLyricTitle(t); if (c && c.track) cands.push(c); }
-  } catch {}
+  const dbg = {};
+  // A) YouTube search via Piped: YouTube matches lyric lines (lyric videos, official audio)
+  if (words.length >= 3) {
+    for (const base of ['https://api.piped.private.coffee', 'https://pipedapi.kavin.rocks', 'https://pipedapi.adminforge.de']) {
+      try {
+        const r = await fetch(base + '/search?q=' + encodeURIComponent(q) + '&filter=videos', { signal: AbortSignal.timeout(6000) });
+        dbg['piped_' + base.split('//')[1]] = r.status;
+        if (!r.ok) continue;
+        const j = await r.json();
+        const items = (j.items || []).filter(it => it.type === 'stream').slice(0, 8);
+        for (const it of items) {
+          const c = parseVideoTitle(String(it.title || ''), String(it.uploaderName || ''));
+          if (c && c.track) cands.push(c);
+        }
+        if (items.length) break;
+      } catch (e) { dbg['piped_' + base.split('//')[1]] = String(e); }
+    }
+  }
+  // B) LRCLIB metadata search as extra candidates
   try {
     const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
     const arr = await r.json();
@@ -216,6 +234,7 @@ async function lyricsSearch(url) {
       if (it.trackName && it.artistName) cands.push({ track: it.trackName, artist: it.artistName });
     }
   } catch {}
+  // strict confirm against LRCLIB lyric text: every query word must appear, and one line must contain them all
   const out = []; const seen = new Set();
   for (const c of cands) {
     if (out.length >= 3) break;
@@ -228,20 +247,18 @@ async function lyricsSearch(url) {
       const r = await fetch(u);
       const arr = await r.json();
       if (!Array.isArray(arr)) continue;
-      const need = Math.min(2, words.length);
       const hit = arr.find(it => {
         const lyr = (it.plainLyrics || '').toLowerCase();
-        return lyr && words.filter(x => lyr.includes(x)).length >= need;
+        return lyr && words.every(x => lyr.includes(x));
       });
       if (hit) {
         const lines = (hit.plainLyrics || '').split('\n').map(s => s.trim()).filter(Boolean);
-        const line = lines.find(l => words.every(x => l.toLowerCase().includes(x)))
-          || lines.find(l => words.some(x => l.toLowerCase().includes(x))) || '';
-        out.push({ title: hit.trackName, artist: hit.artistName, line });
+        const line = lines.find(l => words.every(x => l.toLowerCase().includes(x)));
+        if (line) out.push({ title: hit.trackName, artist: hit.artistName, line });
       }
     } catch {}
   }
-  return json({ matches: out });
+  return json(url.searchParams.has('dbg') ? { matches: out, dbg } : { matches: out });
 }
 
 export default {
