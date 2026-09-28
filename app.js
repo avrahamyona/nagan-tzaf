@@ -167,7 +167,7 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v21b';
+const APP_VERSION = 'v21c';
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
