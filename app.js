@@ -184,10 +184,15 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
+function showStreamDiag() {
+  const d = window._streamDiag;
+  toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
+}
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
+  if (!b.__wired) { b.__wired = true; b.style.cursor = 'pointer'; b.addEventListener('click', showStreamDiag); }
   const map = { audio: ['שמע ישיר', '#34c759'], clip: ['קליפ ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
   const m = map[engine] || ['', ''];
   b.innerHTML = m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' + APP_VERSION : '';
@@ -210,12 +215,15 @@ async function resolveAudioUrl(vid) {
       try {
         const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
         if (r.ok || r.status === 206) return base + '/audio/' + vid;
-      } catch {}
+        window._streamDiag = 'probe' + (attempt + 1) + ': HTTP ' + r.status;
+      } catch (e) {
+        window._streamDiag = 'probe' + (attempt + 1) + ': ' + (e.name === 'AbortError' ? 'timeout' : 'network-ERR');
+      }
       if (!attempt) await new Promise(r => setTimeout(r, 1500));
     }
   }
   try {
-    return await Promise.any(PIPED_HOSTS.map(base => (async () => {
+    const u = await Promise.any(PIPED_HOSTS.map(base => (async () => {
       const ctl = new AbortController();
       const to = setTimeout(() => ctl.abort(), 9000);
       try {
@@ -225,7 +233,8 @@ async function resolveAudioUrl(vid) {
         return pickAudio(await r.json());
       } finally { clearTimeout(to); }
     })()));
-  } catch {}
+    return u;
+  } catch { window._streamDiag = (window._streamDiag || '') + ' piped:fail'; }
   return null;
 }
 (function primeAudioUnlock() {
@@ -236,6 +245,25 @@ async function resolveAudioUrl(vid) {
   document.addEventListener('pointerdown', unlock, true);
 })();
 
+let ytRetryTimer = null;
+function scheduleAudioRetry(t) {
+  clearTimeout(ytRetryTimer);
+  ytRetryTimer = setTimeout(() => {
+    if (videoMode || engine !== 'yt' || !current() || current().id !== t.id) return;
+    resolveAudioUrl(t.id).then(url => {
+      if (videoMode || engine !== 'yt' || !current() || current().id !== t.id) return;
+      if (!url) { scheduleAudioRetry(t); return; }
+      const pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
+      const playing = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
+      try { yt.pauseVideo(); } catch {}
+      engine = 'audio'; playGen++; paintEngineBadge();
+      audioEl.dataset.vid = t.id;
+      audioEl.src = url;
+      try { audioEl.currentTime = pos; } catch {}
+      if (playing) audioEl.play().catch(() => {}); else syncPlayUI(true);
+    });
+  }, 45000);
+}
 function useYtEngine(t, startAt) {
   engine = 'yt'; paintEngineBadge(); playGen++;
   try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
@@ -245,6 +273,7 @@ function useYtEngine(t, startAt) {
   else pendingLoad = t.id;
 }
 function useClipEngine(t, startAt, autoplay) {
+  clearTimeout(ytRetryTimer);
   engine = 'clip'; paintEngineBadge(); playGen++;
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
   try { yt.pauseVideo(); } catch {}
@@ -262,6 +291,8 @@ function useClipEngine(t, startAt, autoplay) {
 
 function loadTrack(t, opts = {}) {
   if (!t) return;
+  clearTimeout(ytRetryTimer);
+  window._streamDiag = '';
   lastCur = -1;
   if (videoMode) { useClipEngine(t, opts.startAt, true); return; }
   engine = 'audio'; paintEngineBadge(); playGen++;
@@ -275,8 +306,9 @@ function loadTrack(t, opts = {}) {
   resolveAudioUrl(t.id).then(url => {
     if (audioEl.dataset.vid !== t.id || videoMode) return;
     if (!url) {
-      if (engine === 'yt-pending') engine = 'yt';
+      if (engine === 'yt-pending') { engine = 'yt'; paintEngineBadge(); }
       else useYtEngine(t, opts.startAt);
+      scheduleAudioRetry(t);
       return;
     }
     try { yt.pauseVideo(); } catch {}
@@ -302,6 +334,7 @@ armAutoResume(clipEl);
 audioEl.addEventListener('play', () => syncPlayUI(false));
 audioEl.addEventListener('pause', () => syncPlayUI(true));
 audioEl.addEventListener('error', () => {
+  if (audioEl.error) window._streamDiag = (window._streamDiag || '') + ' elerr:' + audioEl.error.code;
   const t = current();
   if (!t || videoMode || audioEl.dataset.vid !== t.id) return;
   if (audioRetry++ < 1) {
