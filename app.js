@@ -1,4 +1,4 @@
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -117,8 +117,10 @@ async function searchChannels(q) {
       if (c.chId && !seen.has(c.chId)) { seen.add(c.chId); out.push(c); }
     }
   }
+  // auto-generated Topic channels rank below real channels
   out.sort((a, b) => (b.subs || 0) - (a.subs || 0));
-  return out;
+  const real = out.filter(c => !/ - Topic$/.test(c.name));
+  return real.length ? [...real, ...out.filter(c => / - Topic$/.test(c.name))] : out;
 }
 async function searchLyrics(q) {
   // lyric-line search: worker scrapes a web search engine for candidates and
