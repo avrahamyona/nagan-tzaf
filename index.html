@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#ffffff" id="themeColor">
+<script>
+/* Use the device clock, including while installed as a PWA. */
+(function () {
+  var h = new Date().getHours();
+  var dark = h >= 19 || h < 7;
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('themeColor').content = dark ? '#111114' : '#ffffff';
+})();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -12,7 +21,7 @@
 <link rel="icon" type="image/png" href="icon-192.png?v=49">
 <link rel="apple-touch-icon" href="icon-180.png?v=49">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=64">
+<link rel="stylesheet" href="style.css?v=65">
 </head>
 <body>
 
@@ -308,6 +317,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=64"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>

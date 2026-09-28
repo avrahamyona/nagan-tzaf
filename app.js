@@ -1,4 +1,4 @@
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2778,6 +2778,20 @@ window.addEventListener('freeze', saveResume);
 /* restore position for the first play after a fresh launch */
 let restorePos = (state.resume && state.resume.pos) || 0;
 const takeRestorePos = () => { const p = restorePos; restorePos = 0; return p; };
+
+/* Local-clock appearance: re-evaluate after midnight, on focus and on return
+   from background without requiring a reload or network access. */
+function applyClockTheme() {
+  const hour = new Date().getHours();
+  const dark = hour >= 19 || hour < 7;
+  document.documentElement.classList.toggle('dark', dark);
+  const themeMeta = document.getElementById('themeColor');
+  if (themeMeta) themeMeta.content = dark ? '#111114' : '#ffffff';
+}
+applyClockTheme();
+setInterval(applyClockTheme, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) applyClockTheme(); });
+window.addEventListener('focus', applyClockTheme);
 
 /* ---------- init ---------- */
 renderListen();
