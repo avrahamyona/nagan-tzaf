@@ -184,6 +184,66 @@ async function debugClients(vid) {
   return out;
 }
 
+
+function parseLyricTitle(t) {
+  t = t.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+  let m = t.match(/^(.*?)\s+lyrics\s+by\s+(.+?)\s*(?:[-\u2013|].*)?$/i);
+  if (m) return { track: m[1].trim(), artist: m[2].trim() };
+  t = t.replace(/\s*[-\u2013|]\s*(genius|azlyrics|musixmatch|lyrics on demand|songfacts|youtube|lyrics\.com|metrolyrics|shironet).*$/i, '');
+  t = t.replace(/\s+lyrics(?=\s*[-\u2013|])/i, '').replace(/\s*lyrics\s*$/i, '').trim();
+  m = t.match(/^(.+?)\s*[-\u2013]\s*(.+)$/);
+  if (m) return { artist: m[1].trim(), track: m[2].trim() };
+  return t ? { track: t, artist: '' } : null;
+}
+
+async function lyricsSearch(url) {
+  const q = (url.searchParams.get('q') || '').trim();
+  if (!q) return json({ error: 'q required' }, 400);
+  const words = q.toLowerCase().split(/\s+/).filter(x => x.length > 1);
+  const cands = [];
+  try {
+    const r = await fetch('https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent('"' + q + '" lyrics'), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
+    });
+    const html = await r.text();
+    const titles = [...html.matchAll(/class='result-link'>([^<]+)</g)].map(x => x[1]).slice(0, 8);
+    for (const t of titles) { const c = parseLyricTitle(t); if (c && c.track) cands.push(c); }
+  } catch {}
+  try {
+    const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
+    const arr = await r.json();
+    if (Array.isArray(arr)) for (const it of arr.slice(0, 4)) {
+      if (it.trackName && it.artistName) cands.push({ track: it.trackName, artist: it.artistName });
+    }
+  } catch {}
+  const out = []; const seen = new Set();
+  for (const c of cands) {
+    if (out.length >= 3) break;
+    const key = (c.artist + '|' + c.track).toLowerCase();
+    if (seen.has(key)) continue; seen.add(key);
+    try {
+      const u = new URL('https://lrclib.net/api/search');
+      u.searchParams.set('track_name', c.track);
+      if (c.artist) u.searchParams.set('artist_name', c.artist);
+      const r = await fetch(u);
+      const arr = await r.json();
+      if (!Array.isArray(arr)) continue;
+      const need = Math.min(2, words.length);
+      const hit = arr.find(it => {
+        const lyr = (it.plainLyrics || '').toLowerCase();
+        return lyr && words.filter(x => lyr.includes(x)).length >= need;
+      });
+      if (hit) {
+        const lines = (hit.plainLyrics || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const line = lines.find(l => words.every(x => l.toLowerCase().includes(x)))
+          || lines.find(l => words.some(x => l.toLowerCase().includes(x))) || '';
+        out.push({ title: hit.trackName, artist: hit.artistName, line });
+      }
+    } catch {}
+  }
+  return json({ matches: out });
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
@@ -191,6 +251,7 @@ export default {
     const md = url.pathname.match(/^\/debug\/([A-Za-z0-9_-]{11})\/?$/);
     if (md) return json(await debugClients(md[1]));
     const m = url.pathname.match(/^\/(audio|url)\/([A-Za-z0-9_-]{11})\/?$/);
+    if (url.pathname === '/lyrics') return lyricsSearch(url);
     if (url.pathname === '/healthz') return new Response('ok', { headers: CORS });
     if (!m) return json({ error: 'not found' }, 404);
     const [, kind, vid] = m;

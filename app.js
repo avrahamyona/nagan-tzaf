@@ -13,7 +13,6 @@ const PIPED_HOSTS = [
   'https://api.piped.private.coffee',
   'https://pipedapi.kavin.rocks',
   'https://pipedapi.adminforge.de',
-  'https://pipedapi.drgns.space',
   'https://pipedapi.reallyaweso.me',
   'https://pipedapi.leptons.xyz',
 ];
@@ -51,11 +50,21 @@ function mapStream(it) {
   };
 }
 async function searchMusic(q, filter = 'music_songs') {
-  const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + filter);
-  return (j.items || [])
-    .filter(it => it.type === 'stream' && it.url)
-    .map(mapStream)
-    .filter(t => t.id);
+  const fetchF = f => pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + f)
+    .then(j => (j.items || [])
+      .filter(it => it.type === 'stream' && it.url)
+      .map(mapStream)
+      .filter(t => t.id));
+  if (filter !== 'music_songs') return fetchF(filter);
+  // music_songs only covers the YouTube Music catalog; plain YouTube uploads
+  // (piyyutim, concerts, rare tracks) are only found via the videos filter.
+  const [songs, vids] = await Promise.allSettled([fetchF('music_songs'), fetchF('videos')]);
+  const seen = new Set(); const out = [];
+  for (const r of [songs, vids]) {
+    if (r.status !== 'fulfilled') continue;
+    for (const t of r.value) if (!seen.has(t.id)) { seen.add(t.id); out.push(t); }
+  }
+  return out;
 }
 async function searchChannels(q) {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=music_artists');
@@ -71,6 +80,15 @@ async function searchChannels(q) {
     .filter(c => c.chId);
 }
 async function searchLyrics(q) {
+  // lyric-line search: worker scrapes a web search engine for candidates and
+  // confirms them against LRCLIB's lyric text (LRCLIB q= alone is metadata-only).
+  try {
+    const r0 = await fetch(STREAM_API + '/lyrics?q=' + encodeURIComponent(q));
+    if (r0.ok) {
+      const j0 = await r0.json();
+      if (j0.matches && j0.matches.length) return j0.matches;
+    }
+  } catch {}
   const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
   if (!r.ok) throw new Error('lrclib ' + r.status);
   const j = await r.json();
@@ -221,7 +239,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v26b';
+const APP_VERSION = 'v27';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
