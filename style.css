@@ -815,3 +815,39 @@ html.dark .lyrline.plain { color: rgba(255,255,255,.75); }
   html.dark #seek { background: linear-gradient(to right,rgba(255,255,255,.65) 0 var(--seek-fill,0%),rgba(255,255,255,.18) var(--seek-fill,0%) 100%); }
   html.dark #vol { background: linear-gradient(to right,rgba(255,255,255,.22) 0 var(--vol-fill,10%),#eee var(--vol-fill,10%) 100%); }
 }
+
+/* v66: artist and release pages follow the iPhone Music hierarchy. */
+@media (max-width:819px) {
+  #page-artist .ahero { min-height: clamp(370px, 53dvh, 560px); }
+  #page-artist .ahero-fade { background: linear-gradient(to bottom,rgba(0,0,0,.22) 0%,rgba(0,0,0,.07) 30%,rgba(0,0,0,.5) 66%,var(--bg) 99%); }
+  #page-artist .ahero-meta { padding: 0 18px 18px; text-align: center; }
+  #page-artist .aname { font-size: clamp(32px, 9vw, 45px); line-height: 1.1; }
+  #page-artist .abtns { margin-top: 14px; gap: 18px; }
+  #page-artist .icircle.big { width: 56px; height: 56px; }
+  #page-artist .icircle:not(.big) { width: 36px; height: 36px; }
+  #page-artist .latestcard { margin-top: 4px; }
+}
+#page-artist .latestcard { align-items: center; min-height: 96px; padding: 10px; background: var(--card); border: 1px solid var(--sep); border-radius: 15px; }
+#page-artist .latestcard img { width: 74px; height: 74px; border-radius: 8px; }
+#page-artist .latestcard > div { min-width: 0; flex: 1; }
+#page-artist .latestcard .lc-k { font-size: 11px; color: var(--accent); letter-spacing: 0; }
+#page-artist .latestcard .lc-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-artist .latestcard .lc-chev { color: var(--dim); font-size: 26px; padding: 0 5px; }
+#page-artist .asec { margin-top: 26px; }
+#page-album .albumhead { position: relative; isolation: isolate; padding-top: 76px; }
+#page-album .albumhead::before { content: ''; position: absolute; z-index: -1; inset: 0 0 auto; height: 440px; background-image: var(--album-cover); background-size: cover; background-position: center; filter: blur(45px); opacity: .18; -webkit-mask-image: linear-gradient(#000 15%, transparent 95%); mask-image: linear-gradient(#000 15%, transparent 95%); pointer-events: none; }
+#page-album .albumart { width: min(67vw, 268px); height: min(67vw, 268px); border-radius: 9px; box-shadow: 0 18px 36px rgba(0,0,0,.20); }
+#page-album .pttl { font-size: 23px; font-weight: 750; line-height: 1.2; margin: 20px 0 4px; }
+#page-album .psub { font-size: 17px; font-weight: 600; }
+#page-album .pmeta { margin-top: 8px; font-size: 12px; }
+#page-album .playpair { margin-top: 22px; }
+#page-album .ppill { height: 44px; border-radius: 9px; }
+#page-album .tracklist .row { border-bottom: 1px solid var(--sep); }
+#page-album.release-list .albumhead::before { display: none; }
+#page-album.release-list .albumart { width: 118px; height: 118px; border-radius: 8px; }
+#page-album.release-list .pttl { font-size: 25px; }
+#page-album.release-list .tracklist { padding-top: 18px; }
+#page-album.release-list .albumart { display: none; }
+#page-album.release-list .albumhead { padding-top: 96px; }
+#page-album.release-list .pttl { text-align: right; max-width: 620px; margin: 0 auto 5px; }
+#page-album.release-list .pmeta { text-align: right; max-width: 620px; margin-inline: auto; }

@@ -1,4 +1,4 @@
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2255,6 +2255,8 @@ async function loadAlbumTracks(a) {
 }
 async function openAlbum(a) {
   const seq = ++alSeq;
+  $('page-album').classList.remove('release-list');
+  $('page-album').style.setProperty('--album-cover', a.thumb ? `url("${a.thumb.replace(/["\\]/g, '')}")` : 'none');
   $('alPlay').style.display = ''; $('alShuffle').style.display = '';
   $('alArtist').classList.toggle('link', !!a.artistName);
   alTracks = []; alCur = a;
@@ -2629,7 +2631,7 @@ function renderArtistBody(songs, albums, videos) {
     const latest = visibleAlbums[0];
     const lc = document.createElement('div');
     lc.className = 'latestcard';
-    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">אלבום נבחר</div><div class="lc-t"></div><div class="lc-s dim"></div></div>`;
+    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">הוצאה נבחרת</div><div class="lc-t"></div><div class="lc-s dim"></div></div><span class="lc-chev" aria-hidden="true">‹</span>`;
     lc.querySelector('.lc-t').textContent = latest.title;
     lc.querySelector('.lc-s').textContent = latest.sub;
     lc.addEventListener('click', () => openAlbum(latest));
@@ -2682,6 +2684,8 @@ $('aFav').addEventListener('click', () => {
 });
 async function openArtistAlbums(albums, title, nextpage = '', artistId = '', artistName = '') {
   const seq = ++alSeq; alTracks = []; alCur = null;
+  $('page-album').classList.add('release-list');
+  $('page-album').style.setProperty('--album-cover', 'none');
   const box = $('alTracks'); box.replaceChildren();
   $('alArt').src = albums[0]?.thumb || '';
   $('alTitle').textContent = title;
