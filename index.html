@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Avi Music">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png?v=48">
-<link rel="apple-touch-icon" href="icon-180.png?v=48">
+<link rel="icon" type="image/png" href="icon-192.png?v=49">
+<link rel="apple-touch-icon" href="icon-180.png?v=49">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=48">
+<link rel="stylesheet" href="style.css?v=49">
 </head>
 <body>
 
@@ -52,6 +52,9 @@
     <symbol id="i-tab-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.5 18.5a9.3 9.3 0 0 1 0-13M18.5 5.5a9.3 9.3 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
     <symbol id="i-tab-library" viewBox="0 0 24 24"><path d="M3.2 5.6h11M3.2 10.6h11M3.2 15.6h7" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M16.4 19.6a2 2 0 1 1-1.5-2.4v-7l5.2-1.3v7.5a2 2 0 1 1-1.5-2.4V9.3l-2.2.6z" fill="currentColor"/></symbol>
     <symbol id="i-tab-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.2 4.2a1.05 1.05 0 0 0 1.5-1.5l-4.2-4.2A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></symbol>
+    <symbol id="i-vol-low" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/></symbol>
+    <symbol id="i-vol-high" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.8a4.4 4.4 0 0 1 0 6.4M18.2 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-vol-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18.5A2.75 2.75 0 1 1 6.25 15.8c.34 0 .66.05.95.15V6.4c0-.6.4-1.13.98-1.29l9-2.4A1.3 1.3 0 0 1 18.8 4v11.7a2.75 2.75 0 1 1-1.8-2.6V7.1l-7.8 2.1v9.3z"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 10.5 5-3v9l-5-3z" fill="currentColor"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M9 4.5V4c0-.6.4-1 1-1h4c.6 0 1 .4 1 1v.5h3.2c.5 0 .8.3.8.8s-.3.8-.8.8h-.6l-.8 12.3c-.1 1.4-1.2 2.4-2.6 2.4H8.9c-1.4 0-2.5-1-2.6-2.4L5.5 6h-.6c-.5 0-.8-.3-.8-.8s.3-.8.8-.8H9zm1.8 0h2.4v-.5h-2.4v.5z"/></symbol>
@@ -231,7 +234,7 @@
       <button id="cFwd10" class="ibtn"><svg><use href="#i-fwd10"/></svg></button>
     </div>
     <div id="engineBadge" class="engine-badge"></div>
-    <div class="volrow"><svg class="vsm"><use href="#i-note"/></svg><input id="vol" type="range" min="0" max="100"><svg class="vlg"><use href="#i-note"/></svg></div>
+    <div class="volrow"><button id="volMute" class="vbtn" aria-label="השתקה"><svg class="vsm"><use id="volMuteIcon" href="#i-vol-high"/></svg></button><input id="vol" type="range" min="0" max="100"><svg class="vlg"><use href="#i-vol-high"/></svg></div>
     <div class="pbottom">
       <button id="cLyrics" class="ibtn"><svg><use href="#i-lyrics"/></svg></button>
       <button id="cCast" class="ibtn"><svg><use href="#i-cast"/></svg></button>
@@ -295,6 +298,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>
