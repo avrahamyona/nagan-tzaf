@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v33b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1531,7 +1531,15 @@ const CATS = [
     const el = document.createElement('div');
     el.className = 'cat';
     el.style.background = color;
-    if (imgId) el.style.backgroundImage = "linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.52)), url('https://i.ytimg.com/vi/" + imgId + "/mqdefault.jpg')";
+    if (imgId) {
+      const im = document.createElement('img');
+      im.loading = 'lazy'; im.alt = '';
+      im.src = 'https://i.ytimg.com/vi/' + imgId + '/maxresdefault.jpg';
+      im.onerror = () => { im.onerror = null; im.src = 'https://i.ytimg.com/vi/' + imgId + '/hqdefault.jpg'; };
+      el.appendChild(im);
+      const scrim = document.createElement('div'); scrim.className = 'catscrim';
+      el.appendChild(scrim);
+    }
     const sp = document.createElement('span');
     sp.textContent = name;
     el.appendChild(sp);

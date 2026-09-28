@@ -130,12 +130,12 @@ svg use { pointer-events: none; }
 .pill.on { background: var(--accent); color: #fff; }
 .catgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 4px; }
 .cat {
-  border-radius: 10px; height: 96px; padding: 12px; position: relative; overflow: hidden;
-  font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: flex-end;
-  background-size: cover; background-position: center center;
+  border-radius: 10px; aspect-ratio: 1.72 / 1; padding: 11px 12px; position: relative; overflow: hidden;
+  font-size: 16.5px; font-weight: 700; cursor: pointer; display: flex; align-items: flex-end;
 }
-.cat img { position: absolute; top: -14px; left: -16px; width: 78px; height: 78px; object-fit: cover; border-radius: 8px; transform: rotate(25deg); box-shadow: -4px 4px 10px rgba(0,0,0,.35); }
-.cat span { position: relative; z-index: 1; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.45); }
+.cat img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cat .catscrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.42)); }
+.cat span { position: relative; z-index: 1; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
 
 /* artist hit row */
 .artisthit { display: flex; align-items: center; gap: 14px; padding: 10px 4px; cursor: pointer; border-bottom: 1px solid var(--sep); }
@@ -546,7 +546,7 @@ body.vid #ytwrap { display: block; }
 
 @media (min-width: 820px) {
   .catgrid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
-  .cat { height: 122px; font-size: 18px; }
+  .cat { font-size: 19px; border-radius: 12px; padding: 13px 14px; }
 }
 
 /* קריוקי (Avi Music Sing) */
