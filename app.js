@@ -1,4 +1,4 @@
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -85,6 +85,15 @@ function scoreTrack(t, q) {
   if (na && nq.includes(na)) s += 15;
   return s;
 }
+/* search cache: repeat/rephrased queries feel instant (5 min TTL) */
+const searchCache = new Map();
+function searchMusicCached(q) {
+  const k = q.trim().toLowerCase();
+  const hit = searchCache.get(k);
+  if (hit && Date.now() - hit.t < 5 * 60 * 1000) return Promise.resolve(hit.r);
+  return searchMusic(q).then(r => { searchCache.set(k, { t: Date.now(), r }); if (searchCache.size > 60) searchCache.delete(searchCache.keys().next().value); return r; });
+}
+
 async function searchChannels(q) {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=music_artists');
   return (j.items || [])
@@ -1805,7 +1814,7 @@ input.addEventListener('input', () => {
   const q = input.value.trim();
   if (!q) { $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden'); hideNetNote(); hideSugg(); renderSearchHome(); return; }
   suggTimer = setTimeout(() => showSuggestions(q), 180);
-  searchTimer = setTimeout(() => { hideSugg(); runSearch(q, curPill); }, 450);
+  searchTimer = setTimeout(() => { hideSugg(); runSearch(q, curPill); }, 250);
 });
 input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); clearTimeout(suggTimer); hideSugg(); runSearch(input.value.trim(), curPill); } });
 $('clearSearch').addEventListener('click', () => { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); });
@@ -1849,14 +1858,73 @@ async function runSearch(q, pill) {
       box.appendChild(wrap);
       return;
     }
-    // top / songs
-    const jobs = { songs: searchMusic(q), lyrics: searchLyrics(q) };
+    // top / songs — incremental: paint as each source lands (songs first), don't gate on slow ones
+    const jobs = { songs: searchMusicCached(q), lyrics: searchLyrics(q) };
     if (pill === 'top') { jobs.artists = searchChannels(q); jobs.albums = searchPlaylists(q, 'music_albums'); }
     const res = {};
-    await Promise.all(Object.entries(jobs).map(async ([k, p]) => { try { res[k] = await p; } catch { res[k] = []; } }));
-    if (seq !== searchSeq) return;
-    hideNetNote();
-    box.innerHTML = '';
+    let songsDone = false, lyricsDone = false;
+    const done = () => {
+      if (seq !== searchSeq || !songsDone || !lyricsDone) return;
+      if (!box.children.length) box.innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>';
+    };
+    Object.entries(jobs).forEach(([k, p]) => Promise.resolve(p).then(r => {
+      if (seq !== searchSeq) return;
+      res[k] = r || [];
+      if (k === 'songs') { songsDone = true; paintSearchSongs(); }
+      if (k === 'lyrics') { lyricsDone = true; paintSearchLyrics(); }
+      if (k === 'artists' && pill === 'top' && res.artists.length && !$('resArtistHit')) {
+        const ah = artistHit(res.artists[0]); ah.id = 'resArtistHit'; box.prepend(ah);
+      }
+      if (k === 'albums') paintSearchAlbums();
+      hideNetNote(); done();
+    }).catch(() => { if (k === 'songs') songsDone = true; if (k === 'lyrics') lyricsDone = true; done(); }));
+    const paintSearchSongs = () => {
+      if (seq !== searchSeq) return;
+      box.querySelectorAll('.js-songs').forEach(x => x.remove());
+      const songs = res.songs || [];
+      if (!songs.length) return;
+      const h = document.createElement('h2'); h.className = 'secttl js-songs'; h.textContent = 'שירים';
+      const frag = document.createDocumentFragment();
+      songs.slice(0, 20).forEach((t, i) => frag.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+      const wrap = document.createElement('div'); wrap.className = 'js-songs'; wrap.appendChild(frag);
+      const anchorLyr = box.querySelector('.js-lyr');
+      box.insertBefore(h, anchorLyr); box.insertBefore(wrap, anchorLyr);
+    };
+    const paintSearchLyrics = () => {
+      if (seq !== searchSeq) return;
+      box.querySelectorAll('.js-lyr').forEach(x => x.remove());
+      const lyr = (res.lyrics || []).filter(x => x.line);
+      if (!lyr.length) return;
+      const h = document.createElement('h2'); h.className = 'secttl js-lyr'; h.textContent = 'נמצא במילים';
+      box.appendChild(h);
+      lyr.slice(0, 5).forEach(x => {
+        const row = document.createElement('button');
+        row.className = 'row lyrrow js-lyr';
+        row.innerHTML = '<div class="lyrnote"><svg style="width:20px;height:20px"><use href="#i-lyrics"/></svg></div><div class="meta"><div class="t"></div><div class="a"></div><div class="lyrsnip dim"></div></div>';
+        row.querySelector('.t').textContent = x.title;
+        row.querySelector('.a').textContent = x.artist;
+        renderLyricSnippet(row.querySelector('.lyrsnip'), x.line, q);
+        row.addEventListener('click', async () => {
+          try {
+            const songs = await searchMusic(x.artist + ' ' + x.title);
+            if (songs.length) playQueue(songs, 0);
+            else toast('לא נמצאה התאמה ביוטיוב');
+          } catch { toast('החיפוש לא זמין כרגע'); }
+        });
+        box.appendChild(row);
+      });
+    };
+    const paintSearchAlbums = () => {
+      if (seq !== searchSeq || pill !== 'top' || !res.albums || !res.albums.length) return;
+      box.querySelectorAll('.js-albums').forEach(x => x.remove());
+      const h = document.createElement('h2'); h.className = 'secttl js-albums'; h.textContent = 'אלבומים';
+      box.appendChild(h);
+      const wrap = document.createElement('div');
+      wrap.className = 'hscroll js-albums';
+      res.albums.slice(0, 10).forEach(a => wrap.appendChild(albumCardEl(a)));
+      box.appendChild(wrap);
+    };
+    return;
     const songs = res.songs || [];
     if (pill === 'top' && res.artists && res.artists.length) box.appendChild(artistHit(res.artists[0]));
     if (songs.length) {
@@ -1903,7 +1971,11 @@ async function runSearch(q, pill) {
 async function enrichTitle(t) {
   try {
     const j = await pipedFetch('/streams/' + t.id, 7000);
-    if (j && j.title) { t.title = j.title; t.artist = j.uploader || ''; t.dur = j.duration || 0; t.ch = chFromUrl(j.uploaderUrl) || t.ch || ''; save(); paintPlayingRows(); paintNow(); }
+    if (j && j.title) { t.title = j.title; t.artist = j.uploader || ''; t.dur = j.duration || 0; t.ch = chFromUrl(j.uploaderUrl) || t.ch || ''; save(); paintPlayingRows(); paintNow(); return; }
+  } catch {}
+  try {
+    const r = await fetch('https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=' + t.id + '&format=json');
+    if (r.ok) { const j = await r.json(); t.title = j.title || t.title; t.artist = j.author_name || t.artist; save(); paintPlayingRows(); paintNow(); }
   } catch {}
 }
 
