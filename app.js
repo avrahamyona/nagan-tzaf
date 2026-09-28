@@ -266,7 +266,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1170,14 +1170,19 @@ function showNetNote(msg) { $('netNote').textContent = msg; $('netNote').classLi
 function hideNetNote() { $('netNote').classList.add('hidden'); }
 
 /* ---------- tabs & pages ---------- */
+function tabGlassVertical(bar) {
+  const btns = bar ? bar.querySelectorAll('.tabbtn') : [];
+  return btns.length > 1 && btns[1].offsetTop > btns[0].offsetTop + 4;
+}
 function moveTabGlass() {
   const g = document.querySelector('.tabglass');
   const b = document.querySelector('.tabbtn.on');
   if (!g || !b) return;
+  const vertical = tabGlassVertical(b.parentElement);
   g.style.left = b.offsetLeft + 'px';
   g.style.width = b.offsetWidth + 'px';
-  g.style.top = (b.offsetTop + 5) + 'px';
-  g.style.height = Math.max(0, b.offsetHeight - 10) + 'px';
+  if (vertical) { g.style.top = b.offsetTop + 'px'; g.style.height = b.offsetHeight + 'px'; }
+  else { g.style.top = (b.offsetTop + 5) + 'px'; g.style.height = Math.max(0, b.offsetHeight - 10) + 'px'; }
 }
 function switchTab(name) {
   document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
@@ -1196,34 +1201,49 @@ document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', ()
 (function tabGlassDrag() {
   const bar = $('tabbar'), g = document.querySelector('.tabglass');
   if (!bar || !g) return;
-  let dragging = false, vertical = false, startP = 0, basePos = 0, lastP = 0, lastT = 0, v = 0, pid = null, baseSize = 0, suppressClick = false;
-  bar.addEventListener('pointerdown', e => {
+  let active = false, dragging = false, vertical = false, startP = 0, basePos = 0, lastP = 0, lastT = 0, v = 0, pid = null, baseSize = 0, suppressClick = false;
+  const bounds = () => {
     const btns = [...bar.querySelectorAll('.tabbtn')];
-    vertical = btns.length > 1 && btns[1].offsetTop > btns[0].offsetTop + 4;
-    dragging = true; pid = e.pointerId;
+    if (!btns.length) return [0, 0];
+    const first = btns[0], last = btns[btns.length - 1];
+    return vertical
+      ? [first.offsetTop, last.offsetTop + last.offsetHeight]
+      : [first.offsetLeft, last.offsetLeft + last.offsetWidth];
+  };
+  bar.addEventListener('pointerdown', e => {
+    active = true; dragging = false; pid = e.pointerId;
+    vertical = tabGlassVertical(bar);
     startP = lastP = vertical ? e.clientY : e.clientX; lastT = performance.now(); v = 0;
     basePos = vertical ? g.offsetTop : g.offsetLeft; baseSize = vertical ? g.offsetHeight : g.offsetWidth;
-    g.style.transition = 'none';
-    try { bar.setPointerCapture(pid); } catch {}
   });
   bar.addEventListener('pointermove', e => {
-    if (!dragging || e.pointerId !== pid) return;
+    if (!active || e.pointerId !== pid) return;
     const p = vertical ? e.clientY : e.clientX;
     const now = performance.now();
     v = 0.75 * v + 0.25 * ((p - lastP) / Math.max(1, now - lastT) * 16);
     lastP = p; lastT = now;
+    if (!dragging) {
+      if (Math.abs(p - startP) <= 12) return;   // still a tap: let the button's click fire
+      dragging = true;
+      g.style.transition = 'none';
+      try { bar.setPointerCapture(pid); } catch {}
+      basePos = vertical ? g.offsetTop : g.offsetLeft;
+      baseSize = vertical ? g.offsetHeight : g.offsetWidth;
+      startP = p;
+    }
     const stretch = 1 + Math.min(Math.abs(v) * 0.025, 0.3);
     const size = baseSize * stretch;
-    const barSize = vertical ? bar.clientHeight : bar.clientWidth;
+    const [mn, mx] = bounds();
     let x = basePos + (p - startP) - (size - baseSize) / 2;
-    x = Math.max(2, Math.min(barSize - size - 2, x));
+    x = Math.max(mn, Math.min(Math.max(mn, mx - size), x));
     if (vertical) { g.style.top = x + 'px'; g.style.height = size + 'px'; }
     else { g.style.left = x + 'px'; g.style.width = size + 'px'; }
   });
   const end = e => {
-    if (!dragging || (e && e.pointerId !== pid)) return;
-    dragging = false;
-    if (Math.abs(lastP - startP) > 12) suppressClick = true;
+    if (!active || (e && e.pointerId !== pid)) return;
+    active = false;
+    if (!dragging) return;   // plain tap: the button click handler switches tab and the bubble glides
+    dragging = false; suppressClick = true;
     g.style.transition = '';
     const c = (vertical ? g.offsetTop : g.offsetLeft) + (vertical ? g.offsetHeight : g.offsetWidth) / 2;
     let best = null, bd = 1e9;
