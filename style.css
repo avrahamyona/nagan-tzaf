@@ -856,3 +856,8 @@ html.dark .lyrline.plain { color: rgba(255,255,255,.75); }
 html.dark .lyrbg { opacity: .19; filter: blur(78px) saturate(.8) brightness(.55); }
 html.dark .lyrinner { background: rgba(21,20,25,.78); }
 html.dark .lyrhead button { color: #f5f5f7; }
+
+/* Artist rows retain a circular initial while an exact portrait is unavailable. */
+.artisthit .artistph { width:64px; height:64px; flex:0 0 64px; border-radius:50%; background:var(--card2); color:var(--dim); display:grid; place-items:center; font-size:27px; font-weight:700; }
+
+.radiohero .rh-placeholder { width:100%; aspect-ratio:16/9; background:linear-gradient(145deg,#6e1235,#312559 58%,#171723); }

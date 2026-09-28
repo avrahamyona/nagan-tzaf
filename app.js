@@ -1,4 +1,4 @@
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -131,6 +131,50 @@ async function searchChannels(q) {
   out.sort((a, b) => (b.subs || 0) - (a.subs || 0));
   const real = out.filter(c => !/ - Topic$/.test(c.name));
   return real.length ? [...real, ...out.filter(c => / - Topic$/.test(c.name))] : out;
+}
+/* Artist portraits come from exact channel matches, never a song cover. */
+const artistPortraitCache = new Map();
+function artistPortrait(name, chId = '') {
+  const key = chId || normTxt(name);
+  if (!key) return Promise.resolve('');
+  if (!artistPortraitCache.has(key)) {
+    artistPortraitCache.set(key, (async () => {
+      try {
+        if (chId) {
+          const channel = await pipedFetch('/channel/' + chId, 8000);
+          if (channel?.avatarUrl && (!channel.id || channel.id === chId)) return channel.avatarUrl;
+        }
+        const matches = await searchChannels(name);
+        const exact = matches.find(c => chId ? c.chId === chId :
+          normTxt(c.name.replace(/ - Topic$/i, '')) === normTxt(name));
+        return exact?.avatar || '';
+      } catch { return ''; }
+    })());
+  }
+  return artistPortraitCache.get(key);
+}
+function fillArtistPortrait(card, name, chId = '') {
+  if (card.querySelector('img')) {
+    const img = card.querySelector('img');
+    if (img.getAttribute('src')) return;
+  }
+  artistPortrait(name, chId).then(url => {
+    if (!url || !card.isConnected) return;
+    const img = document.createElement('img'); img.loading = 'lazy'; img.alt = name;
+    img.onerror = () => {
+      const fallback = document.createElement('div');
+      fallback.className = placeholder?.classList.contains('stph') ? 'stph' : placeholder?.classList.contains('cc-ph') ? 'cc-ph' : 'artistph';
+      const letter = document.createElement('span'); letter.textContent = name.trim()[0] || ''; fallback.appendChild(letter);
+      img.replaceWith(fallback);
+    };
+    const placeholder = card.querySelector('.stph,.cc-ph,.artistph');
+    img.src = url;
+    if (placeholder) placeholder.replaceWith(img);
+    else {
+      const old = card.querySelector('img');
+      if (old) old.replaceWith(img);
+    }
+  });
 }
 async function searchLyrics(q) {
   // lyric-line search: worker scrapes a web search engine for candidates and
@@ -917,11 +961,19 @@ function paintPlayingRows() {
 function artistHit(c) {
   const row = document.createElement('div');
   row.className = 'artisthit';
-  row.innerHTML = `<img loading="lazy" src="${c.avatar || ''}" alt=""><div class="meta"><div class="t"></div><div class="a"></div></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
+  row.innerHTML = `<div class="artistph" aria-hidden="true"></div><div class="meta"><div class="t"></div><div class="a"></div></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
+  const portrait = row.querySelector('.artistph');
+  portrait.textContent = c.name.trim()[0] || '';
+  if (c.avatar) {
+    const img = document.createElement('img'); img.loading = 'lazy'; img.alt = '';
+    img.onerror = () => img.replaceWith(portrait);
+    img.src = c.avatar; portrait.replaceWith(img);
+  }
   row.querySelector('.t').textContent = c.name.replace(/ - Topic$/i, '');
   if (c.verified) row.querySelector('.t').insertAdjacentHTML('beforeend', ' <svg style="width:13px;height:13px;vertical-align:-1px;color:#fa2d48"><use href="#i-check"/></svg>');
   row.querySelector('.a').textContent = 'אמן';
   row.addEventListener('click', () => { closePlayer(); openArtist(c.chId, c.name, c.avatar); });
+  if (!c.avatar) fillArtistPortrait(row, c.name, c.chId);
   return row;
 }
 
@@ -1831,6 +1883,11 @@ function stationCard(name, avatar, onTap) {
     ? `<img loading="lazy" src="${avatar}" alt="">`
     : `<div class="stph" style="background:${g}"><span></span></div>`) + `<div class="ct"></div><div class="cs"></div>`;
   if (!avatar) el.querySelector('.stph span').textContent = name.trim()[0] || '';
+  else el.querySelector('img').onerror = () => {
+    const ph = document.createElement('div'); ph.className = 'stph'; ph.style.background = g;
+    const letter = document.createElement('span'); letter.textContent = name.trim()[0] || ''; ph.appendChild(letter);
+    el.querySelector('img')?.replaceWith(ph);
+  };
   el.querySelector('.ct').textContent = name;
   el.querySelector('.cs').textContent = 'התחנה של ' + name;
   el.addEventListener('click', onTap);
@@ -2086,7 +2143,7 @@ async function renderRadio() {
   const hero = document.createElement('div');
   hero.className = 'radiohero';
   const seedT = state.history[0];
-  hero.innerHTML = `<img alt="" src="${seedT ? thumb(seedT.id, 'hq') : ''}"><div class="rh-ov"><div class="rh-k">תחנה אישית</div><div class="rh-t">הרדיו שלך</div><div class="rh-s">שירים שאתה אוהב ועוד כמוהם</div></div>`;
+  hero.innerHTML = `${seedT ? `<img alt="" src="${thumb(seedT.id, 'hq')}">` : '<div class="rh-placeholder" aria-hidden="true"></div>'}<div class="rh-ov"><div class="rh-k">תחנה אישית</div><div class="rh-t">הרדיו שלך</div><div class="rh-s">שירים שאתה אוהב ועוד כמוהם</div></div>`;
   hero.addEventListener('click', async () => {
     toast('מפעיל את הרדיו שלך...');
     try {
@@ -2106,18 +2163,22 @@ async function renderRadio() {
   box.appendChild(hero);
   const { sec, body } = sectionEl('תחנות של אמנים', 'hscroll');
   const favs = Object.entries(state.favArtists).map(([chId, a]) => ({ chId, name: a.name, avatar: a.avatar }));
-  const hist = [...new Set(state.history.map(t => t.artist).filter(Boolean))].slice(0, 6).map(n => ({ name: n, avatar: '' }));
+  const hist = [...new Set(state.history.map(t => t.artist).filter(Boolean))].slice(0, 6).map(n => ({ name: n, avatar: '', chId: state.history.find(t => t.artist === n)?.ch || '' }));
   const list = favs.length ? favs.concat(hist.filter(x => !favs.some(f => f.name === x.name))).slice(0, 8) : (hist.length ? hist : [
     { name: 'אייל גולן' }, { name: 'עומר אדם' }, { name: 'איתי לוי' }, { name: 'מושיק עפיה' }, { name: 'נועה קירל' }, { name: 'עידן רייכל' },
   ]);
-  list.forEach(a => body.appendChild(stationCard(a.name, a.avatar, async () => {
-    toast('מפעיל את התחנה של ' + a.name + '...');
-    try {
-      const items = await searchMusic(a.name);
-      if (items.length) playQueue(items, 0, { station: { seed: items[0].id, name: a.name } });
-      else toast('לא נמצאו שירים');
-    } catch { toast('החיפוש לא זמין כרגע'); }
-  })));
+  list.forEach(a => {
+    const card = stationCard(a.name, a.avatar, async () => {
+      toast('מפעיל את התחנה של ' + a.name + '...');
+      try {
+        const items = await searchMusic(a.name);
+        if (items.length) playQueue(items, 0, { station: { seed: items[0].id, name: a.name } });
+        else toast('לא נמצאו שירים');
+      } catch { toast('החיפוש לא זמין כרגע'); }
+    });
+    body.appendChild(card);
+    if (!a.avatar) fillArtistPortrait(card, a.name, a.chId || '');
+  });
   box.appendChild(sec);
 }
 
