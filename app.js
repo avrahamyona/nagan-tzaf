@@ -1,4 +1,4 @@
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -693,13 +693,22 @@ async function stationRefill() {
   const st = state.station;
   if (!st) return false;
   const seed = current(), artists = tasteArtists();
-  if (!seed?.id || !artists.length) return false;
+  if (!seed?.id || (!state.station.artist && !artists.length)) return false;
   try {
     const j = await pipedFetch('/streams/' + seed.id, 8000);
     const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream')
       .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id) &&
-        !state.lessSuggestions?.[t.id] && artistMatchesTaste(t, artists));
+        !state.lessSuggestions?.[t.id] && (state.station.artist
+          ? normTxt(t.artist.replace(/ - Topic$/i, '')) === normTxt(state.station.artist) &&
+            (!state.station.chId || !t.ch || t.ch === state.station.chId)
+          : artistMatchesTaste(t, artists)));
     if (!rel.length) return false;
+    if (state.station.artist) {
+      for (let i = rel.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rel[i], rel[j]] = [rel[j], rel[i]];
+      }
+    }
     state.queue = state.queue.concat(rel.slice(0, 12));
     save();
     return true;
@@ -709,7 +718,7 @@ async function advance(dir, auto) {
   if (!state.queue.length) return;
   if (auto && state.repeat === 'one') { loadTrack(current()); return; }
   let n = state.qi;
-  if (state.shuffle && state.queue.length > 2) {
+  if (state.shuffle && !state.station?.artist && state.queue.length > 2) {
     do { n = Math.floor(Math.random() * state.queue.length); } while (n === state.qi);
   } else {
     n = state.qi + dir;
@@ -2022,6 +2031,25 @@ async function renderListen() {
     if (body.children.length) box.appendChild(sec);
   }
 
+  const playFavoriteArtistStation = async (name, chId) => {
+    toast('מפעיל את התחנה של ' + name + '...');
+    try {
+      const songs = (await searchMusicCached(name)).filter(t =>
+        normTxt(t.artist.replace(/ - Topic$/i, '')) === normTxt(name) &&
+        (!chId || !t.ch || t.ch === chId));
+      if (!songs.length) return toast('לא נמצאו שירים של ' + name);
+      // Shuffle the matching artist's songs once, including the first song.
+      const queue = songs.slice();
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+      state.shuffle = true;
+      playQueue(queue, 0, { station: { seed: queue[0].id, name, artist: name, chId } });
+      save();
+    } catch { toast('התחנה לא זמינה כרגע'); }
+  };
+
   /* 7. אומנים מועדפים: circle cards */
   {
     const favs = Object.entries(state.favArtists).map(([chId, a]) => ({ chId, name: a.name, avatar: a.avatar }));
@@ -2030,10 +2058,7 @@ async function renderListen() {
       const { sec, body } = sectionEl('אומנים מועדפים', 'hscroll circles');
       names.forEach((n, i) => {
         const f = favs.find(x => x.name === n);
-        body.appendChild(circleArtistCard(n, f && f.avatar, GRADS[i % GRADS.length], () => {
-          if (f && f.chId) openArtist(f.chId, f.name, f.avatar);
-          else playSearch(n, n);
-        }));
+        body.appendChild(circleArtistCard(n, f && f.avatar, GRADS[i % GRADS.length], () => playFavoriteArtistStation(n, f?.chId || '')));
       });
       box.appendChild(sec);
       // Channel portraits are fetched from artist results; never substitute song-cover art for a person.
@@ -2048,7 +2073,7 @@ async function renderListen() {
           bg.innerHTML = '';
           const img = document.createElement('img'); img.loading = 'lazy'; img.alt = n; img.src = exact.avatar;
           bg.appendChild(img);
-          card.onclick = () => openArtist(exact.chId, n, exact.avatar);
+          // Portrait loading must not replace the station action on this card.
         } catch {}
       });
     }
