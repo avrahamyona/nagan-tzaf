@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v32b';
+const APP_VERSION = 'v33';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1024,6 +1024,55 @@ function renderPlainLyrics(txt) {
     body.appendChild(d);
   }
 }
+
+/* ---------- karaoke: center-channel vocal attenuation (Web Audio) ---------- */
+let actx = null, kara = null, karaAmt = 0;
+function ensureKaraoke() {
+  if (kara) return true;
+  if (!audioEl.src) return false;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const src = actx.createMediaElementSource(audioEl);
+    const split = actx.createChannelSplitter(2);
+    const invR = actx.createGain(); invR.gain.value = -1;
+    const invL = actx.createGain(); invL.gain.value = -1;
+    const wetL = actx.createGain(); // out L = L - R (center cancels)
+    const wetR = actx.createGain(); // out R = R - L
+    src.connect(split);
+    split.connect(wetL, 0); split.connect(invR, 1); invR.connect(wetL);
+    split.connect(wetR, 1); split.connect(invL, 0); invL.connect(wetR);
+    const dry = actx.createGain(); const wet = actx.createGain();
+    src.connect(dry); dry.connect(actx.destination);
+    wetL.connect(wet); wetR.connect(wet); wet.connect(actx.destination);
+    wet.gain.value = 0;
+    kara = { dry, wet };
+    return true;
+  } catch { return false; }
+}
+function setKaraoke(amt) {
+  karaAmt = amt;
+  $('karaokeBtn').classList.toggle('on', amt > 0);
+  if (amt > 0 && !(engine === 'audio' && !videoMode)) { toast('קריוקי זמין במצב שמע ישיר'); return; }
+  if (amt > 0) {
+    if (!ensureKaraoke()) { toast('קריוקי לא זמין לשיר הזה'); return; }
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+  }
+  if (!kara) return;
+  kara.dry.gain.value = 1 - amt;
+  kara.wet.gain.value = amt;
+}
+$('karaokeBtn').addEventListener('click', () => {
+  const s = $('karaokeSlider');
+  if (s.classList.contains('hidden')) {
+    s.classList.remove('hidden');
+    if (karaAmt === 0) { s.value = 70; setKaraoke(0.7); }
+  } else {
+    s.classList.add('hidden');
+    s.value = 0; setKaraoke(0);
+  }
+});
+$('karaokeSlider').addEventListener('input', () => setKaraoke($('karaokeSlider').value / 100));
+
 function closeLyrics() {
   clearInterval(lyrSync.timer);
   $('lyrView').classList.remove('open');

@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Avi Music">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png?v=321">
-<link rel="apple-touch-icon" href="icon-180.png?v=321">
+<link rel="icon" type="image/png" href="icon-192.png?v=33">
+<link rel="apple-touch-icon" href="icon-180.png?v=33">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=321">
+<link rel="stylesheet" href="style.css?v=33">
 </head>
 <body>
 
@@ -33,6 +33,7 @@
     <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.3C7.2 16.9 3.4 13.6 3.4 9.6 3.4 7 5.4 5 7.9 5c1.7 0 3.2.9 4.1 2.4C12.9 5.9 14.4 5 16.1 5c2.5 0 4.5 2 4.5 4.6 0 4-3.8 7.3-8.6 10.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
 <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20.3C7.2 16.9 3.4 13.6 3.4 9.6 3.4 7 5.4 5 7.9 5c1.7 0 3.2.9 4.1 2.4C12.9 5.9 14.4 5 16.1 5c2.5 0 4.5 2 4.5 4.6 0 4-3.8 7.3-8.6 10.7z"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9.2" y="2.6" width="5.6" height="10.6" rx="2.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.8 11.6a6.2 6.2 0 0 0 12.4 0M12 17.8v3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 <symbol id="i-cast" viewBox="0 0 24 24"><path d="M10.9 13.2c.5-.9 1.7-.9 2.2 0l3.6 6.1c.5.9-.1 2-1.1 2H8.4c-1 0-1.6-1.1-1.1-2z" fill="currentColor"/><path d="M9.2 7a4 4 0 0 1 5.6 0M6.3 4.1a8.1 8.1 0 0 1 11.4 0M3.5 1.3a12.1 12.1 0 0 1 17 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" transform="translate(0,2.2)"/></symbol>
 <symbol id="i-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
     <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
@@ -260,6 +261,10 @@
       <button class="xbtn" id="lyrClose"><svg><use href="#i-x"/></svg></button>
     </div>
     <div id="lyrBody" class="lyrbody"></div>
+    <div class="karaoke">
+      <button id="karaokeBtn" class="ibtn karbtn"><svg><use href="#i-mic"/></svg></button>
+      <input id="karaokeSlider" type="range" min="0" max="100" value="0" class="hidden">
+    </div>
   </div>
 </div>
 
@@ -289,6 +294,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=321"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

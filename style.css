@@ -548,3 +548,9 @@ body.vid #ytwrap { display: block; }
   .catgrid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
   .cat { height: 122px; font-size: 18px; }
 }
+
+/* קריוקי (Avi Music Sing) */
+.karaoke{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:16px;display:flex;align-items:center;gap:10px;z-index:6}
+.karbtn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.65);backdrop-filter:blur(12px);box-shadow:0 2px 12px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center}
+.karbtn.on{background:#fa2d48;color:#fff}
+#karaokeSlider{width:170px;accent-color:#fa2d48}
