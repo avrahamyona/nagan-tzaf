@@ -339,12 +339,12 @@ body.vid #ytwrap { display: block; }
 .pcontrols .ibtn svg { width: 19px; height: 19px; }
 .seek10 { display: flex; justify-content: center; gap: 60px; margin-top: 2px; }
 .seek10 .ibtn svg { width: 24px; height: 24px; }
-.volrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: rgba(255,255,255,.6); direction: ltr; }
+.volrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: rgba(255,255,255,.6); direction: rtl; }
 .volrow svg { width: 17px; height: 17px; flex: none; }
 .volrow .vlg { width: 19px; height: 19px; }
 #vol { flex: 1; min-width: 0; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px;
-  background: linear-gradient(to right, rgba(0,0,0,.8) 0 var(--vol-fill, 90%), rgba(128,128,128,.14) var(--vol-fill, 90%) 100%);
-  outline: none; direction: ltr; cursor: pointer; touch-action: pan-x; }
+  background: linear-gradient(to left, rgba(0,0,0,.8) 0 var(--vol-fill, 90%), rgba(128,128,128,.14) var(--vol-fill, 90%) 100%);
+  outline: none; direction: rtl; cursor: pointer; touch-action: pan-x; }
 #vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 0; height: 6px; background: transparent; border: 0; }
 #vol::-moz-range-thumb { width: 0; height: 6px; background: transparent; border: 0; }
 #vol:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
