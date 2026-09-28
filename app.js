@@ -169,22 +169,46 @@ const clipEl = $('clipEl');
 let userPaused = false;
 let playGen = 0;
 function armAutoResume(el) {
+  const tryResume = g => {
+    if (playGen !== g || userPaused) return;
+    if (el !== M() || !el.paused || el.ended) return;
+    el.play().catch(() => {
+      // iOS sometimes kills the media pipeline on interruption: reload and retry from the same spot.
+      if (playGen !== g || userPaused || el !== M()) return;
+      const pos = el.currentTime || 0;
+      try { el.load(); } catch {}
+      const h = () => {
+        el.removeEventListener('canplay', h);
+        if (playGen !== g || userPaused || el !== M()) return;
+        try { el.currentTime = pos; } catch {}
+        el.play().catch(() => {});
+      };
+      el.addEventListener('canplay', h);
+    });
+  };
   el.addEventListener('pause', () => {
     if (userPaused || el.ended) return;
     if (!(engine === 'audio' || engine === 'clip')) return;
     if (el !== M()) return;
     const g = playGen;
-    [700, 3000].forEach(ms => setTimeout(() => {
-      if (playGen !== g || userPaused) return;
-      if (el.paused && !el.ended) el.play().catch(() => {});
-    }, ms));
+    [500, 1500, 3000, 6000, 12000, 25000].forEach(ms => setTimeout(() => tryResume(g), ms));
   });
   el.addEventListener('play', () => { userPaused = false; });
+  // If the retries all failed (iOS blocked gesture-less play), catch the next
+  // opportunity: app returns to foreground / window focus.
+  const onForeground = () => {
+    if (userPaused || !(engine === 'audio' || engine === 'clip')) return;
+    if (el !== M() || !el.paused || el.ended || !el.src) return;
+    el.play().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) onForeground(); });
+  window.addEventListener('focus', onForeground);
+  window.addEventListener('pageshow', onForeground);
 }
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v24b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
