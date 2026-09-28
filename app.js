@@ -1,4 +1,4 @@
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -766,7 +766,7 @@ setInterval(() => {
   }
   syncPlayUI(paused);
   if (!seeking) {
-    if (d > 0) $('seek').value = Math.round((c / d) * 1000);
+    if (d > 0) { $('seek').value = Math.round((c / d) * 1000); paintSeekFill(); }
     $('tCur').textContent = fmt(c);
     $('tRem').textContent = d > 0 ? fmtRem(c, d) : '-0:00';
   }
@@ -1359,7 +1359,7 @@ function applyVolume() {
   if (ytReady && yt.setVolume) yt.setVolume(v);
   if (volEl) {
     volEl.value = v;
-    volEl.style.setProperty('--vol-fill', `${v}%`);
+    volEl.style.setProperty('--vol-fill', `${100 - v}%`);
   }
 }
 volEl.addEventListener('input', () => {
@@ -1368,12 +1368,29 @@ volEl.addEventListener('input', () => {
 });
 applyVolume();
 const seekEl = $('seek');
-seekEl.addEventListener('input', () => { seeking = true; });
-seekEl.addEventListener('change', () => {
-  if (activeAudio()) { if (M().duration) M().currentTime = (seekEl.value / 1000) * M().duration; }
-  else if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
-  seeking = false;
+function paintSeekFill() { seekEl.style.setProperty('--seek-fill', `${(+seekEl.value / 10).toFixed(1)}%`); }
+paintSeekFill();
+function seekDuration() {
+  if (activeAudio()) return M().duration || 0;
+  return ytReady && yt.getDuration ? yt.getDuration() || 0 : 0;
+}
+function applySeek() {
+  const d = seekDuration();
+  if (!(d > 0)) return;
+  const time = (+seekEl.value / 1000) * d;
+  if (activeAudio()) M().currentTime = time;
+  else if (ytReady && yt.seekTo) yt.seekTo(time, true);
+}
+seekEl.addEventListener('input', () => {
+  seeking = true; paintSeekFill();
+  const d = seekDuration();
+  if (d > 0) { $('tCur').textContent = fmt((+seekEl.value / 1000) * d); $('tRem').textContent = fmtRem((+seekEl.value / 1000) * d, d); }
+  applySeek();
 });
+seekEl.addEventListener('change', () => { applySeek(); seeking = false; });
+seekEl.addEventListener('pointerup', () => { seeking = false; });
+seekEl.addEventListener('pointercancel', () => { seeking = false; });
+seekEl.addEventListener('blur', () => { seeking = false; });
 
 /* ---------- song/video toggle ---------- */
 let videoMode = false;
