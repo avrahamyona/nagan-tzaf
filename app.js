@@ -1,4 +1,4 @@
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -215,6 +215,13 @@ window.onYouTubeIframeAPIReady = function () {
 
 /* ---------- audio engine: ad-free direct streams, embed fallback ---------- */
 const audioEl = document.createElement('audio');
+function setAudioSrc(url) {
+  // karaoke's Web Audio graph goes silent on CORS-tainted media; only the
+  // worker sends CORS headers, so opt into CORS just for worker URLs.
+  if (url && url.includes('workers.dev')) audioEl.crossOrigin = 'anonymous';
+  else audioEl.removeAttribute('crossorigin');
+  setAudioSrc(url);
+}
 audioEl.preload = 'none';
 const clipEl = $('clipEl');
 let userPaused = false;
@@ -346,7 +353,7 @@ function scheduleAudioRetry(t) {
       try { yt.stopVideo(); } catch {}
       engine = 'audio'; playGen++; paintEngineBadge();
       audioEl.dataset.vid = t.id;
-      audioEl.src = url;
+      setAudioSrc(url);
       try { audioEl.currentTime = pos; } catch {}
       if (playing) audioEl.play().catch(() => {}); else syncPlayUI(true);
     });
@@ -403,7 +410,7 @@ function loadTrack(t, opts = {}) {
     try { yt.stopVideo(); } catch {}
     const wasPlaying = engine === 'yt-pending' && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
     engine = 'audio'; paintEngineBadge();
-    audioEl.src = url;
+    setAudioSrc(url);
     if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
     if (wasPlaying || hasGesture || opts.autoplay) audioEl.play().catch((e) => { noteAutoplayBlock(e); useYtEngine(t, opts.startAt); });
     else syncPlayUI(true);
@@ -428,7 +435,7 @@ audioEl.addEventListener('error', () => {
   if (!t || videoMode || audioEl.dataset.vid !== t.id) return;
   if (audioRetry++ < 1) {
     resolveAudioUrl(t.id).then(url => {
-      if (url && audioEl.dataset.vid === t.id && !videoMode) { audioEl.src = url; audioEl.play().catch(() => {}); }
+      if (url && audioEl.dataset.vid === t.id && !videoMode) { setAudioSrc(url); audioEl.play().catch(() => {}); }
       else useYtEngine(t);
     });
   } else useYtEngine(t);
@@ -682,8 +689,15 @@ function paintNow() {
   const art = $('pArt');
   art.crossOrigin = 'anonymous';
   art.onload = () => tintPlayer(art);
-  art.src = sqThumb(t.id, 'maxres');
-  art.onerror = () => { art.onerror = null; art.src = thumb(t.id, 'hq'); };
+  const setArt = (q) => { art.dataset.q = q; art.src = sqThumb(t.id, q); };
+  art.onerror = () => {
+    const q = art.dataset.q;
+    if (q === 'maxres') setArt('hq');
+    else if (q === 'hq') setArt('mq');
+    else art.onerror = null;
+  };
+  if (art.dataset.vid !== t.id) { art.dataset.vid = t.id; setArt('maxres'); }
+  else if (art.complete && art.naturalWidth === 0) setArt('maxres');
   $('pTitle').textContent = t.title; $('pArtist').textContent = t.artist;
   $('pArtist').classList.toggle('link', !!t.ch);
   $('cOpenYT').href = 'https://music.youtube.com/watch?v=' + t.id;
@@ -960,7 +974,7 @@ $('cCast').addEventListener('click', async () => {
 
 
 /* ---------- lyrics view (in-app, Apple Music style) ---------- */
-const lyrSync = { lines: null, timer: 0, vid: '' };
+const lyrSync = { lines: null, timer: 0, vid: '', lastCur: -1, manualUntil: 0 };
 function parseLRC(s) {
   const out = [];
   const re = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
@@ -996,7 +1010,7 @@ function seekAbsS(s) {
 }
 async function openLyrics() {
   const t = current(); if (!t) return;
-  lyrSync.vid = t.id; lyrSync.lines = null; clearInterval(lyrSync.timer);
+  lyrSync.vid = t.id; lyrSync.lines = null; lyrSync.lastCur = -1; lyrSync.manualUntil = 0; clearInterval(lyrSync.timer);
   $('lyrView').classList.remove('hidden');
   requestAnimationFrame(() => $('lyrView').classList.add('open'));
   $('lyrTitle').textContent = t.title;
@@ -1038,7 +1052,8 @@ function paintLyrics() {
   const els = $('lyrBody').children;
   for (let i = 0; i < els.length; i++) els[i].className = 'lyrline' + (i === cur ? ' cur' : i < cur ? ' past' : '');
   const el = els[cur];
-  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (el && cur !== lyrSync.lastCur && Date.now() > lyrSync.manualUntil) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  lyrSync.lastCur = cur;
 }
 function renderPlainLyrics(txt) {
   lyrSync.lines = null; clearInterval(lyrSync.timer);
@@ -1048,6 +1063,14 @@ function renderPlainLyrics(txt) {
     body.appendChild(d);
   }
 }
+
+(() => {
+  const b = $('lyrBody');
+  if (!b) return;
+  const manual = () => { lyrSync.manualUntil = Date.now() + 6000; };
+  b.addEventListener('pointerdown', manual);
+  b.addEventListener('wheel', manual, { passive: true });
+})();
 
 /* ---------- karaoke: center-channel vocal attenuation (Web Audio) ---------- */
 let actx = null, kara = null, karaAmt = 0;
@@ -1156,7 +1179,7 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
       resolveAudioUrl(t.id).then(url => {
         if (audioEl.dataset.vid !== t.id || videoMode) return;
         if (!url) { useYtEngine(t, pos); return; }
-        audioEl.src = url;
+        setAudioSrc(url);
         try { audioEl.currentTime = pos; } catch {}
         if (wasPlaying) audioEl.play().catch(() => syncPlayUI(true));
       });
@@ -1991,7 +2014,7 @@ document.addEventListener('visibilitychange', () => {
         try { yt.stopVideo(); } catch {}
         engine = 'audio'; playGen++; paintEngineBadge();
         audioEl.dataset.vid = t.id;
-        audioEl.src = url;
+        setAudioSrc(url);
         try { audioEl.currentTime = pos; } catch {}
         audioEl.play().catch(() => {});
       });

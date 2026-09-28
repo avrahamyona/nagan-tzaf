@@ -516,9 +516,9 @@ body.vid #ytwrap { display: block; }
 .lyrtitle{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lyrartist{font-size:13px}
 .lyrbody{flex:1;overflow-y:auto;padding:24px 28px 55vh;direction:rtl;text-align:right;-webkit-overflow-scrolling:touch}
-.lyrline{font-size:23px;font-weight:700;line-height:1.45;margin:15px 0;color:rgba(20,20,25,.32);cursor:pointer;transition:color .25s,transform .25s;transform-origin:right center}
-.lyrline.past{color:rgba(20,20,25,.55)}
-.lyrline.cur{color:#141419;transform:scale(1.04)}
+.lyrline{font-size:24px;font-weight:700;line-height:1.5;margin:16px 0;color:rgba(20,20,25,.28);cursor:pointer;transition:color .3s,transform .3s,filter .3s;transform-origin:right center;filter:blur(.4px)}
+.lyrline.past{color:rgba(20,20,25,.5);filter:none}
+.lyrline.cur{color:#141419;transform:scale(1.06);filter:none;font-weight:800}
 .lyrline.plain{cursor:default;color:rgba(20,20,25,.75);font-weight:600}
 .lyrnote2{padding:40px 0;text-align:center;font-size:15px}
 @media(min-width:820px){
