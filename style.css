@@ -786,7 +786,7 @@ html.dark .icircle { background: rgba(65,65,71,.82); color: #fff; }
 html.dark .icircle.white { background: #fff; color: #111; }
 html.dark .sheetbox { background: #242428; }
 html.dark .ahero-fade { background: linear-gradient(rgba(0,0,0,.02) 30%, rgba(0,0,0,.4) 70%, var(--bg) 98%); }
-html.dark #pBg { background: linear-gradient(165deg,var(--np-bg1),var(--np-bg2) 90%); }
+html.dark #pBg { background: linear-gradient(165deg,var(--np-dark1, #343438),var(--np-dark2, #18181b) 90%); }
 html.dark .pgrab, html.dark .partist { color: rgba(255,255,255,.65); }
 html.dark .ptitle, html.dark .ibtn, html.dark .cbtn { color: var(--text); }
 html.dark .partist.link, html.dark .ibtn.on { color: var(--accent); }
@@ -851,3 +851,8 @@ html.dark .lyrline.plain { color: rgba(255,255,255,.75); }
 #page-album.release-list .albumhead { padding-top: 96px; }
 #page-album.release-list .pttl { text-align: right; max-width: 620px; margin: 0 auto 5px; }
 #page-album.release-list .pmeta { text-align: right; max-width: 620px; margin-inline: auto; }
+
+/* v67: keep the artwork-led player and lyric wash dark at night. */
+html.dark .lyrbg { opacity: .19; filter: blur(78px) saturate(.8) brightness(.55); }
+html.dark .lyrinner { background: rgba(21,20,25,.78); }
+html.dark .lyrhead button { color: #f5f5f7; }
