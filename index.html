@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Avi Music">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png?v=28">
-<link rel="apple-touch-icon" href="icon-180.png?v=28">
+<link rel="icon" type="image/png" href="icon-192.png?v=29">
+<link rel="apple-touch-icon" href="icon-180.png?v=29">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 
@@ -240,6 +240,21 @@
   <div id="queueList" class="list sheetlist"></div>
 </div>
 
+<!-- ============ מילים ============ -->
+<div id="lyrView" class="lyrview hidden">
+  <div class="lyrbg" id="lyrBg"></div>
+  <div class="lyrinner">
+    <div class="lyrhead">
+      <div class="lyrmeta">
+        <div id="lyrTitle" class="lyrtitle"></div>
+        <div id="lyrArtist" class="lyrartist dim"></div>
+      </div>
+      <button class="xbtn" id="lyrClose"><svg><use href="#i-x"/></svg></button>
+    </div>
+    <div id="lyrBody" class="lyrbody"></div>
+  </div>
+</div>
+
 <!-- ============ תפריט שיר ============ -->
 <div id="songSheet" class="sheetbox hidden">
   <div id="songSheetHead" class="songsheethead"></div>
@@ -266,6 +281,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

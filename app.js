@@ -246,7 +246,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -624,6 +624,7 @@ function tintPlayer(img) {
   } catch {}
 }
 function paintNow() {
+  if (!$('lyrView').classList.contains('hidden') && current() && lyrSync.vid !== current().id) openLyrics();
   const t = current();
   if (!t) { $('mini').classList.add('hidden'); return; }
   $('mini').classList.remove('hidden');
@@ -861,10 +862,104 @@ $('cRepeat').addEventListener('click', () => {
   save(); paintNow();
   toast(state.repeat === 'off' ? 'בלי חזרה' : state.repeat === 'all' ? 'חזרה על הרשימה' : 'חזרה על השיר');
 });
-$('cLyrics').addEventListener('click', () => {
-  const t = current();
-  if (t) window.open('https://www.google.com/search?q=' + encodeURIComponent(t.title + ' ' + t.artist + ' מילים'), '_blank');
-});
+$('cLyrics').addEventListener('click', openLyrics);
+
+/* ---------- lyrics view (in-app, Apple Music style) ---------- */
+const lyrSync = { lines: null, timer: 0, vid: '' };
+function parseLRC(s) {
+  const out = [];
+  const re = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
+  for (const row of s.split('\n')) {
+    const txt = row.replace(re, '').trim();
+    if (!txt) continue;
+    re.lastIndex = 0;
+    let m; while ((m = re.exec(row))) out.push({ t: +m[1] * 60 + +m[2], text: txt });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+async function fetchLyrics(t) {
+  const q = new URLSearchParams({ track_name: t.title, artist_name: t.artist });
+  if (t.dur) q.set('duration', Math.round(t.dur));
+  try {
+    const r = await fetch('https://lrclib.net/api/get?' + q);
+    if (r.ok) { const j = await r.json(); if (j && (j.syncedLyrics || j.plainLyrics || j.instrumental)) return j; }
+  } catch {}
+  try {
+    const r = await fetch('https://lrclib.net/api/search?track_name=' + encodeURIComponent(t.title) + '&artist_name=' + encodeURIComponent(t.artist));
+    const arr = await r.json();
+    if (Array.isArray(arr)) {
+      return arr.find(x => (x.syncedLyrics || x.plainLyrics) && (!t.dur || Math.abs((x.duration || 0) - t.dur) < 6))
+        || arr.find(x => x.syncedLyrics || x.plainLyrics) || null;
+    }
+  } catch {}
+  return null;
+}
+function curTimeS() { return activeAudio() ? (M().currentTime || 0) : (ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0); }
+function seekAbsS(s) {
+  if (activeAudio()) { try { M().currentTime = s; } catch {} }
+  else if (ytReady && yt.seekTo) yt.seekTo(s, true);
+}
+async function openLyrics() {
+  const t = current(); if (!t) return;
+  lyrSync.vid = t.id; lyrSync.lines = null; clearInterval(lyrSync.timer);
+  $('lyrView').classList.remove('hidden');
+  requestAnimationFrame(() => $('lyrView').classList.add('open'));
+  $('lyrTitle').textContent = t.title;
+  $('lyrArtist').textContent = t.artist;
+  $('lyrBg').style.backgroundImage = "url('" + sqThumb(t.id) + "')";
+  const body = $('lyrBody');
+  body.innerHTML = '<div class="lyrnote2 dim">טוען מילים…</div>';
+  const j = await fetchLyrics(t);
+  if (lyrSync.vid !== t.id) return;
+  if (j && j.instrumental) { body.innerHTML = '<div class="lyrnote2 dim">שיר אינסטרומנטלי</div>'; return; }
+  if (!j || (!j.syncedLyrics && !j.plainLyrics)) {
+    body.innerHTML = '<div class="lyrnote2 dim">אין מילים זמינות לשיר הזה</div>';
+    return;
+  }
+  if (j.syncedLyrics) {
+    const lines = parseLRC(j.syncedLyrics);
+    if (lines.length) { renderSyncedLyrics(lines); return; }
+  }
+  renderPlainLyrics(j.plainLyrics || '');
+}
+function renderSyncedLyrics(lines) {
+  lyrSync.lines = lines;
+  const body = $('lyrBody'); body.innerHTML = '';
+  for (const l of lines) {
+    const d = document.createElement('div'); d.className = 'lyrline'; d.textContent = l.text;
+    d.addEventListener('click', () => seekAbsS(l.t));
+    body.appendChild(d);
+  }
+  clearInterval(lyrSync.timer);
+  lyrSync.timer = setInterval(paintLyrics, 250);
+  paintLyrics();
+}
+function paintLyrics() {
+  const lines = lyrSync.lines;
+  if (!lines || !$('lyrView').classList.contains('open')) return;
+  const c = curTimeS();
+  let cur = 0;
+  for (let i = 0; i < lines.length; i++) { if (lines[i].t <= c + 0.2) cur = i; else break; }
+  const els = $('lyrBody').children;
+  for (let i = 0; i < els.length; i++) els[i].className = 'lyrline' + (i === cur ? ' cur' : i < cur ? ' past' : '');
+  const el = els[cur];
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+function renderPlainLyrics(txt) {
+  lyrSync.lines = null; clearInterval(lyrSync.timer);
+  const body = $('lyrBody'); body.innerHTML = '';
+  for (const row of txt.split('\n')) {
+    const d = document.createElement('div'); d.className = 'lyrline plain'; d.textContent = row.trim() || '\u00A0';
+    body.appendChild(d);
+  }
+}
+function closeLyrics() {
+  clearInterval(lyrSync.timer);
+  $('lyrView').classList.remove('open');
+  setTimeout(() => $('lyrView').classList.add('hidden'), 400);
+}
+$('lyrClose').addEventListener('click', closeLyrics);
+
 const volEl = $('vol');
 volEl.value = state.volume;
 volEl.addEventListener('input', () => {
