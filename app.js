@@ -1,4 +1,4 @@
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -175,6 +175,7 @@ let state = {
   queue: [], qi: 0,
   shuffle: false, repeat: 'off',
   volume: 90,
+  lessSuggestions: {}, // videoId -> suppress from auto-suggestions
   fav: {},            // videoId -> true
   favArtists: {},     // chId -> {name, avatar}
   albums: {},         // plId -> {plId,title,thumb,sub}
@@ -195,7 +196,7 @@ function save() {
     localStorage.setItem(LS_KEY, JSON.stringify({
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
-      fav: state.fav, favArtists: state.favArtists, albums: state.albums,
+      fav: state.fav, favArtists: state.favArtists, albums: state.albums, lessSuggestions: state.lessSuggestions,
       history: state.history.slice(0, 60), resume: state.resume, recentSearches: (state.recentSearches || []).slice(0, 12),
     }));
   } catch {}
@@ -567,7 +568,7 @@ async function ensureUpNext() {
     const w = new Map();
     const n = Math.max(1, state.history.length);
     state.history.forEach((h, i) => { if (h.artist) w.set(h.artist, (w.get(h.artist) || 0) + 1 + i / n); });
-    rel = rel.filter(t => !inQ.has(t.id));
+    rel = rel.filter(t => !inQ.has(t.id) && !state.lessSuggestions?.[t.id]);
     rel.sort((a, b) => (w.get(b.artist) || 0) - (w.get(a.artist) || 0));
     const add = rel.slice(0, 12 - ahead);
     if (add.length) { state.queue.push(...add); save(); }
@@ -582,7 +583,7 @@ async function stationRefill() {
   try {
     const j = await pipedFetch('/streams/' + (seed ? seed.id : st.seed), 8000);
     const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream')
-      .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id));
+      .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id) && !state.lessSuggestions?.[t.id]);
     if (!rel.length) return false;
     state.queue = state.queue.concat(rel.slice(0, 12));
     save();
@@ -850,7 +851,9 @@ function openSongSheet(t, opts = {}) {
   $('songSheetHead').querySelector('.a').textContent = t.artist;
   setIcon($('ssFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'בטל אהבתי' : 'אהבתי';
-  $('ssArtist').classList.toggle('hidden', !t.ch);
+  $('ssArtist').classList.toggle('hidden', !t.ch && !t.artist);
+  $('ssQueueNext').classList.toggle('hidden', !current());
+  $('ssQueueLast').classList.toggle('hidden', !current());
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
   openSheet('songSheet');
 }
@@ -871,6 +874,42 @@ $('ssFav').addEventListener('click', () => { if (sheetTrack) toggleFav(sheetTrac
 $('ssAdd').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack) openAddSheet(sheetTrack); });
 $('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack && sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); });
 $('ssRemove').addEventListener('click', () => { closeSheet('songSheet'); if (sheetOpts.onRemove) sheetOpts.onRemove(); });
+
+function shareSong(t) {
+  const url = location.origin + location.pathname + '?song=' + t.id;
+  const data = { title: 'Avi Music', text: t.title + (t.artist ? ' · ' + t.artist : ''), url };
+  if (navigator.share) return navigator.share(data).catch(e => { if (e?.name !== 'AbortError') toast('לא הצלחתי לשתף'); });
+  return navigator.clipboard.writeText(url).then(() => toast('הקישור לשיר הועתק')).catch(() => toast(url, 6000));
+}
+$('ssShare').addEventListener('click', () => { const t = sheetTrack; closeSheet('songSheet'); if (t) shareSong(t); });
+$('ssQueueNext').addEventListener('click', () => {
+  const t = sheetTrack; closeSheet('songSheet'); if (!t || !current()) return;
+  state.queue.splice(state.qi + 1, 0, t); save(); toast('נוסף להבא בתור');
+});
+$('ssQueueLast').addEventListener('click', () => {
+  const t = sheetTrack; closeSheet('songSheet'); if (!t || !current()) return;
+  state.queue.push(t); save(); toast('נוסף לסוף התור');
+});
+$('ssStation').addEventListener('click', async () => {
+  const t = sheetTrack; closeSheet('songSheet'); if (!t) return;
+  try {
+    const j = await pipedFetch('/streams/' + t.id, 8000);
+    const rel = (j.relatedStreams || []).filter(x => x.url && x.type === 'stream')
+      .map(mapStream).filter(x => x.id && x.id !== t.id);
+    playQueue([t, ...rel], 0, { station: { seed: t.id, name: 'התחנה של ' + (t.artist || t.title) } });
+  } catch { toast('יצירת התחנה לא זמינה כרגע'); }
+});
+$('ssArtist').addEventListener('click', () => {
+  const t = sheetTrack; closeSheet('songSheet');
+  if (!t?.ch && t?.artist) searchArtistAndOpen(t.artist);
+});
+$('ssLess').addEventListener('click', () => {
+  if (!sheetTrack) return;
+  const t = sheetTrack; state.lessSuggestions ||= {};
+  state.lessSuggestions[t.id] = true; save(); closeSheet('songSheet');
+  toast('נציג פחות הצעות מהשיר הזה');
+});
+
 
 let addTarget = null;
 function openAddSheet(t) {
@@ -1326,7 +1365,44 @@ function switchTab(name) {
   if (name === 'radio') renderRadio();
   if (name === 'search') renderSearchHome();
 }
-document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => {
+  const currentTab = document.querySelector('.tabbtn.on')?.dataset.tab;
+  if (b.dataset.tab === currentTab) {
+    const page = document.querySelector('.page.on');
+    if (page) { closePage(page.id); return; }
+    if (currentTab === 'search') {
+      const input = $('searchInput'); input.value = ''; hideSugg();
+      $('clearSearch').classList.add('hidden');
+      $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden');
+      renderSearchHome(); $('view-search').scrollTo({ top: 0, behavior: 'smooth' }); return;
+    }
+    const view = $('view-' + currentTab); if (view) view.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  switchTab(b.dataset.tab);
+}));
+/* iPhone RTL edge-back: swipe from the right edge toward the left on a detail page. */
+(function rtlEdgeBack() {
+  let start = null;
+  document.addEventListener('touchstart', e => {
+    if (window.innerWidth >= 820 || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    start = t.clientX >= window.innerWidth - 28 ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!start || e.changedTouches.length !== 1) { start = null; return; }
+    const t = e.changedTouches[0], dx = start.x - t.clientX, dy = Math.abs(start.y - t.clientY);
+    start = null;
+    if (dx < 75 || dy > 70 || dx < dy * 1.5) return;
+    const visibleSheet = [...document.querySelectorAll('.sheetbox.open')].at(-1);
+    if (visibleSheet) { closeSheet(visibleSheet.id); return; }
+    const page = [...document.querySelectorAll('.page.on')].at(-1);
+    if (page) { closePage(page.id); return; }
+    if (!$('player').classList.contains('hidden')) { closePlayer(); return; }
+    if (!$('lyrView').classList.contains('hidden')) { closeLyrics(); return; }
+  }, { passive: true });
+})();
+
 
 /* draggable liquid-glass tab bubble (iOS 26 style) - horizontal on phone, vertical in the desktop sidebar */
 (function tabGlassDrag() {
