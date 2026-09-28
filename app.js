@@ -1,4 +1,4 @@
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -985,7 +985,7 @@ function openSongDestinationSheet(t) {
 }
 function positionDestinationSheet() {
   const sheet = $('destinationSheet'), anchor = $('pArtist').getBoundingClientRect();
-  const width = Math.min(270, innerWidth - 32), height = sheet.offsetHeight || (destinationAlbum ? 132 : 100);
+  const width = Math.min(247, innerWidth - 32), height = sheet.offsetHeight || (destinationAlbum ? 132 : 100);
   const top = anchor.top >= height + 28 ? anchor.top - height - 12 : anchor.bottom + 12;
   sheet.style.left = Math.max(16, Math.min(innerWidth - width - 16, anchor.right - width)) + 'px';
   sheet.style.top = Math.max(16, Math.min(innerHeight - height - 16, top)) + 'px';
@@ -998,9 +998,32 @@ $('destArtist').addEventListener('click', () => {
 });
 $('destAlbum').addEventListener('click', () => {
   const a = destinationAlbum;
-  closeSheet('destinationSheet'); closePlayer();
-  if (a?.plId) openAlbum(a);
+  if (!a?.plId) return;
+  closeSheet('destinationSheet');
+  animateAlbumRoute(a);
 });
+
+function animateAlbumRoute(a) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { openAlbum(a); closePlayer(); return; }
+  const source = $('pArt'), rect = source.getBoundingClientRect();
+  const cover = document.createElement('img');
+  cover.className = 'album-route-cover'; cover.alt = '';
+  const art = a.thumb || source.currentSrc || source.src;
+  cover.src = art;
+  if (!a.thumb) a = { ...a, thumb: art };
+  cover.style.left = rect.left + 'px'; cover.style.top = rect.top + 'px';
+  cover.style.width = rect.width + 'px'; cover.style.height = rect.height + 'px';
+  document.body.appendChild(cover);
+  openAlbum(a);
+  closePlayer();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const target = $('alArt').getBoundingClientRect();
+    cover.style.left = target.left + 'px'; cover.style.top = target.top + 'px';
+    cover.style.width = target.width + 'px'; cover.style.height = target.height + 'px';
+    cover.style.opacity = '.35';
+  }));
+  setTimeout(() => cover.remove(), 360);
+}
 
 let sheetTrack = null, sheetOpts = {};
 function openSongSheet(t, opts = {}) {

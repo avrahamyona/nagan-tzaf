@@ -752,3 +752,24 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
 #vol:active::-webkit-slider-thumb,#vol:focus-visible::-webkit-slider-thumb { width: 12px; height: 12px; opacity: 1; }
 #vol:active::-moz-range-thumb,#vol:focus-visible::-moz-range-thumb { width: 12px; height: 12px; opacity: 1; }
 @media (min-width:820px) { #vol { background: linear-gradient(to right, rgba(0,0,0,.16) 0 var(--vol-fill,10%), #505055 var(--vol-fill,10%) 100%); } #seek { background: linear-gradient(to right, rgba(0,0,0,.52) 0 var(--seek-fill,0%),rgba(0,0,0,.16) var(--seek-fill,0%) 100%); } }
+
+/* v61: the reference uses a restrained two-row frosted menu and an artwork handoff. */
+#destinationSheet {
+  width: min(247px, calc(100vw - 32px)); padding: 0;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 19px;
+  background: rgba(108,129,143,.72);
+  -webkit-backdrop-filter: blur(32px) saturate(145%); backdrop-filter: blur(32px) saturate(145%);
+  transform: translateY(10px) scale(.9); transform-origin: 85% 100%;
+  transition: transform .25s cubic-bezier(.19,1,.22,1), opacity .19s ease;
+  box-shadow: 0 13px 38px rgba(0,0,0,.23);
+}
+#destinationSheet.open { transform: translateY(0) scale(1); }
+#destinationSheet .destination-row { min-height: 52px; padding: 7px 13px; font-size: 14px; }
+#destinationSheet .destination-row + .destination-row { border-top: 1px solid rgba(255,255,255,.22); border-radius: 0; }
+#destinationSheet .destination-row small { font-size: 11px; }
+#destinationSheet .destination-row svg { width: 18px; height: 18px; }
+#destinationSheet .dest-status { padding: 3px 13px 8px; }
+#destinationSheet .dest-status:empty { display: none; }
+#destinationSheet .destination-row:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.album-route-cover { position: fixed; z-index: 42; object-fit: cover; pointer-events: none; border-radius: 8px; box-shadow: 0 12px 35px #0004; transition: left .32s cubic-bezier(.2,.8,.2,1), top .32s cubic-bezier(.2,.8,.2,1), width .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), opacity .32s ease; }
+@media (prefers-reduced-motion: reduce) { #destinationSheet,.album-route-cover { transition: none; } }
