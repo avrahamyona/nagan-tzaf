@@ -617,3 +617,14 @@ body.vid #ytwrap { display: block; }
   .asec-body.wide .card.widecap { width: 300px; }
   .herocard .hc-title { font-size: 32px; }
 }
+
+/* v52: Apple Music proportions, tappable collection headings, desktop carousel controls */
+.asec-head { display: flex; align-items: center; gap: 12px; margin: 0 18px 10px; }
+.asec-title { font-size: 19px; font-weight: 700; letter-spacing: -.35px; text-align: right; line-height: 1.25; display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.asec-chev { font-size: 20px; font-weight: 400; color: var(--dim); line-height: 1; }
+.asec-arrows { display: none; margin-right: auto; gap: 7px; direction: ltr; }
+.asec-arrow { width: 29px; height: 29px; border-radius: 50%; background: #f0f0f3; color: #515159; font-size: 25px; line-height: 22px; text-align: center; transition: background .15s; }
+.asec-arrow:hover { background: #dcdce1; }
+.asec-arrow:focus-visible,.asec-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.herocard .hc-title { font-size: clamp(21px, 6vw, 27px); max-width: 100%; overflow-wrap: break-word; line-height: 1.13; }
+@media (min-width: 820px) { .asec-arrows { display: flex; } .herocard .hc-title { font-size: 25px; } }
