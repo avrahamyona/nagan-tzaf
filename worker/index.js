@@ -15,6 +15,9 @@
 
 const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const CLIENTS = [
+  // ANDROID returns a progressive (non-fragmented) mp4 that plays in a plain
+  // <audio> element; adaptive audio-only formats are DASH-fragmented and don't.
+  { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 34, hl: 'en' },
   { clientName: 'IOS', clientVersion: '20.10.4', deviceModel: 'iPhone16,2', hl: 'en' },
   { clientName: 'MWEB', clientVersion: '2.20250925.01.00', hl: 'en' },
   { clientName: 'WEB', clientVersion: '2.20250925.01.00', hl: 'en' },
@@ -40,12 +43,13 @@ function json(obj, status = 200) {
 
 async function extractFormat(vid) {
   const cache = caches.default;
-  const key = new Request(`https://avi-music-cache.local/fmt/${vid}`);
+  const key = new Request(`https://avi-music-cache.local/fmt-v2/${vid}`);
   const hit = await cache.match(key);
   if (hit) {
     const j = await hit.json();
     if (j.exp > Date.now()) return j.fmt;
   }
+  for (let pass = 0; pass < 2; pass++)
   for (const client of CLIENTS) {
     try {
       const r = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_KEY}`, {
@@ -57,21 +61,26 @@ async function extractFormat(vid) {
       const j = await r.json();
       const ps = j.playabilityStatus || {};
       if (ps.status !== 'OK') continue;
-      const fmts = (j.streamingData && j.streamingData.adaptiveFormats) || [];
-      const auds = fmts.filter(f => f.url && /audio\//.test(f.mimeType || ''));
-      if (!auds.length) continue;
+      const sd = j.streamingData || {};
+      // Prefer a muxed progressive mp4 (itag 18): playable as-is in <audio>.
+      const muxed = (sd.formats || []).filter(f => f.url && /video\/mp4/.test(f.mimeType || ''));
+      const adaptive = sd.adaptiveFormats || [];
+      const auds = adaptive.filter(f => f.url && /audio\//.test(f.mimeType || ''));
+      if (!muxed.length && !auds.length) continue;
       const mp4 = auds.filter(f => /audio\/mp4/.test(f.mimeType));
-      const best = (mp4.length ? mp4 : auds).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      const best = muxed.length
+        ? muxed.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
+        : (mp4.length ? mp4 : auds).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
       const fmt = {
         url: best.url,
-        mime: (best.mimeType || 'audio/mp4').split(';')[0],
+        mime: (best.mimeType || 'video/mp4').split(';')[0],
         bitrate: best.bitrate || 0,
         contentLength: parseInt(best.contentLength || '0', 10) || 0,
       };
       const resp = new Response(JSON.stringify({ exp: Date.now() + FMT_CACHE_TTL * 1000, fmt }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${FMT_CACHE_TTL}` },
       });
-      await cache.put(key, resp);
+      cache.put(key, resp).catch(() => {});
       return fmt;
     } catch (e) { /* try next client */ }
   }
@@ -131,10 +140,35 @@ function streamAudio(fmt, rangeHeader) {
   return new Response(stream, { status: partial ? 206 : 200, headers });
 }
 
+async function debugClients(vid) {
+  const out = [];
+  for (const client of CLIENTS) {
+    try {
+      const r = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+        body: JSON.stringify({ context: { client }, videoId: vid }),
+      });
+      const j = await r.json();
+      const sd = j.streamingData || {};
+      out.push({
+        client: client.clientName,
+        http: r.status,
+        playability: (j.playabilityStatus || {}).status,
+        muxed: (sd.formats || []).map(f => f.itag),
+        adaptiveAudioMp4: (sd.adaptiveFormats || []).filter(f => /audio\/mp4/.test(f.mimeType || '')).length,
+      });
+    } catch (e) { out.push({ client: client.clientName, error: String(e) }); }
+  }
+  return out;
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    const md = url.pathname.match(/^\/debug\/([A-Za-z0-9_-]{11})\/?$/);
+    if (md) return json(await debugClients(md[1]));
     const m = url.pathname.match(/^\/(audio|url)\/([A-Za-z0-9_-]{11})\/?$/);
     if (url.pathname === '/healthz') return new Response('ok', { headers: CORS });
     if (!m) return json({ error: 'not found' }, 404);
