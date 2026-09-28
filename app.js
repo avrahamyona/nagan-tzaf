@@ -167,7 +167,8 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const STREAM_API = localStorage.getItem('nagan_stream_api') || '';
+const STREAM_API_DEFAULT = 'https://avi-music-audio.avi-music.workers.dev';
+const STREAM_API = new URLSearchParams(location.search).get('streamapi') || localStorage.getItem('nagan_stream_api') || STREAM_API_DEFAULT;
 
 function pickAudio(j) {
   const as = ((j && j.audioStreams) || []).filter(a => a.url);
@@ -177,9 +178,11 @@ function pickAudio(j) {
 }
 async function resolveAudioUrl(vid) {
   if (STREAM_API) {
+    const base = STREAM_API.replace(/\/$/, '');
     try {
-      const r = await fetch(STREAM_API.replace(/\/$/, '') + '/audio/' + vid);
-      if (r.ok) { const j = await r.json(); if (j.url) return j.url; }
+      // Fast path: worker proxies audio bytes directly - just check it has a stream for this video.
+      const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
+      if (r.ok || r.status === 206) return base + '/audio/' + vid;
     } catch {}
   }
   try {

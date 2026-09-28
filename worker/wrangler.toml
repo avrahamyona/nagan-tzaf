@@ -1,0 +1,4 @@
+name = "avi-music-audio"
+account_id = "843ac166c4e6cbd56ca8fa483f4d9994"
+main = "index.js"
+compatibility_date = "2025-09-01"
