@@ -1,4 +1,4 @@
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -1430,42 +1430,160 @@ async function renderListen() {
   const box = $('listenBody');
   const h = state.history;
   box.innerHTML = '';
-  // top picks from history
-  if (h.length) {
-    const { sec, body } = sectionEl('הבחירות המובילות', 'hscroll');
-    h.slice(0, 8).forEach((t, i) => body.appendChild(bigCard(t, i === 0 ? 'מושמע עכשיו' : 'שוב לשמוע', () => playQueue(h, h.indexOf(t)))));
-    box.appendChild(sec);
-    const { sec: s2, body: b2 } = sectionEl('הושמע לאחרונה', 'hscroll');
-    h.slice(0, 12).forEach(t => b2.appendChild(sqCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
-    box.appendChild(s2);
-  } else {
-    box.innerHTML = '<div class="empty"><div class="big"><svg style="width:56px;height:56px;opacity:.35"><use href="#i-note"/></svg></div><h2>ברוכים הבאים</h2><p>נגן משהו ונתחיל להכיר את הטעם שלך.</p></div>';
-  }
-  // made for you: derived from history artists, else Israeli defaults
-  const topArtists = [...new Set(h.map(t => t.artist).filter(Boolean))].slice(0, 4);
-  const seeds = topArtists.length ? topArtists : ['אייל גולן', 'מושיק עפיה', 'אדם', 'עומר אדם'];
-  const { sec: s3, body: b3 } = sectionEl(topArtists.length ? 'בשבילך' : 'פלייליסטים בשבילך', 'hscroll');
-  seeds.forEach((a, i) => b3.appendChild(gradCard('המיקס של ' + a, GRADS[i % GRADS.length], async () => {
-    toast('בונה מיקס של ' + a + '...');
+
+  /* ---- personalization seeds ---- */
+  const artistW = new Map();
+  h.forEach((t, i) => { if (t.artist) artistW.set(t.artist, (artistW.get(t.artist) || 0) + 1 + i / Math.max(1, h.length)); });
+  const topArtists = [...artistW.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const seeds = topArtists.length ? topArtists : ['אייל גולן', 'עומר אדם', 'מושיק עפיה', 'איתי לוי'];
+  const firstByArtist = a => h.find(t => t.artist === a);
+
+  const playSearch = async (q, stationName) => {
+    toast('בונה את ' + (stationName || q) + '...');
     try {
-      const items = await searchMusic(a);
-      if (items.length) playQueue(items, 0, { station: { seed: items[0].id, name: a } });
+      const items = await searchMusic(q);
+      if (items.length) playQueue(items, 0, stationName ? { station: { seed: items[0].id, name: stationName } } : {});
       else toast('לא נמצאו שירים');
     } catch { toast('החיפוש לא זמין כרגע'); }
-  })));
-  box.appendChild(s3);
-  // fresh section (network), loaded once per while
-  if (Date.now() - listenLoaded > 10 * 60 * 1000) {
-    listenLoaded = Date.now();
-    const { sec: s4, body: b4 } = sectionEl('חם עכשיו בישראל', 'hscroll');
-    b4.innerHTML = '<div class="empty"><p>טוען...</p></div>';
-    box.appendChild(s4);
-    try {
-      const items = await searchMusic('השירים הכי שמועים בישראל');
-      b4.innerHTML = '';
-      items.slice(0, 12).forEach(t => b4.appendChild(sqCard(t, () => playQueue(items, items.indexOf(t)), t.artist)));
-    } catch { s4.remove(); }
+  };
+
+  /* ---- 1. בחירות מובילות עבורך: hero carousel ---- */
+  {
+    const { sec, body } = sectionEl('בחירות מובילות עבורך', 'hscroll heroes');
+    const heroes = [];
+    const t0 = firstByArtist(seeds[0]);
+    heroes.push({ title: 'המיקס של ' + seeds[0], kicker: 'במיוחד עבורך', desc: [seeds[0], seeds[1], seeds[2]].filter(Boolean).join(', ') + ' ועוד', grad: GRADS[5], img: t0 ? sqThumb(t0.id, 'hq') : '', tap: () => playSearch(seeds[0], 'המיקס של ' + seeds[0]) });
+    if (seeds[1]) { const t1 = firstByArtist(seeds[1]); heroes.push({ title: seeds[1] + ' וכמוהו', kicker: 'במיוחד עבורך', desc: 'שירים בסגנון שאתה אוהב', grad: GRADS[0], img: t1 ? sqThumb(t1.id, 'hq') : '', tap: () => playSearch(seeds[1], seeds[1] + ' וכמוהו') }); }
+    heroes.push({ title: 'תחנת השירים שלך', kicker: 'במיוחד עבורך', desc: 'השירים, האמנים והסגנונות שלך', grad: GRADS[4], img: '', tap: () => document.querySelector('[data-tab=radio]') && playSearch(seeds[0] || 'להיטים ישראלים', 'הרדיו שלך') });
+    if (seeds[2]) heroes.push({ title: 'חוזרים אל ' + seeds[2], kicker: 'במיוחד עבורך', desc: 'עוד ממה ששמעת לאחרונה', grad: GRADS[2], img: firstByArtist(seeds[2]) ? sqThumb(firstByArtist(seeds[2]).id, 'hq') : '', tap: () => playSearch(seeds[2], seeds[2]) });
+    heroes.push({ title: 'שירי מוטיבציה', kicker: 'במיוחד עבורך', desc: 'אנרגיה לכל היום', grad: GRADS[1], img: '', tap: () => playSearch('שירי מוטיבציה בעברית') });
+    heroes.forEach(hc => body.appendChild(heroCard(hc)));
+    box.appendChild(sec);
   }
+
+  /* ---- 2. הושמעו לאחרונה ---- */
+  if (h.length) {
+    const { sec, body } = sectionEl('הושמעו לאחרונה', 'hscroll');
+    h.slice(0, 12).forEach(t => body.appendChild(sqCapCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
+    box.appendChild(sec);
+  } else {
+    const { sec, body } = sectionEl('הושמעו לאחרונה', 'hscroll');
+    body.innerHTML = '<div class="empty inline"><p>נגן משהו ונתחיל להכיר את הטעם שלך.</p></div>';
+    box.appendChild(sec);
+  }
+
+  /* ---- network sections: paint as they land ---- */
+  const fillSec = (mkSec, q, cardFn, limit) => {
+    const { sec, body } = mkSec;
+    body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
+    box.appendChild(sec);
+    searchMusicCached(q).then(items => {
+      body.innerHTML = '';
+      items.slice(0, limit || 12).forEach(t => body.appendChild(cardFn(t, items)));
+    }).catch(() => sec.remove());
+  };
+
+  /* 3. השירים החדשים הטובים ביותר: list rows */
+  {
+    const { sec, body } = sectionEl('השירים החדשים הטובים ביותר', 'list');
+    body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
+    box.appendChild(sec);
+    searchMusicCached('שירים חדשים 2026 ישראל').then(items => {
+      body.innerHTML = '';
+      items.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(items, items.indexOf(t)) })));
+    }).catch(() => sec.remove());
+  }
+
+  /* 4. חדש השבוע: big squares */
+  fillSec(() => sectionEl('חדש השבוע', 'hscroll bigsq'), 'השירים הכי שמועים בישראל 2026', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
+
+  /* 5. כולם מקשיבים ל...: wide cards */
+  fillSec(() => sectionEl('כולם מקשיבים ל...', 'hscroll wide'), 'להיטים ישראלים 2026', (t, items) => wideCapCard(t, () => playQueue(items, items.indexOf(t))));
+
+  /* 6. פלייליסטים במיוחד עבורך: mood heroes */
+  {
+    const { sec, body } = sectionEl('פלייליסטים במיוחד עבורך', 'hscroll heroes');
+    [
+      { title: 'אנרגיה', desc: 'להתניע את היום', grad: 'linear-gradient(135deg,#ff5e3a,#ff2d55)', q: 'שירי אנרגיה מקפיצים בעברית' },
+      { title: 'רגוע', desc: 'שירים רגועים להירגע', grad: 'linear-gradient(135deg,#30b0c7,#5856d6)', q: 'שירים רגועים ישראלים' },
+      { title: 'מסיבה', desc: 'הלהיטים הכי מקפיצים', grad: 'linear-gradient(135deg,#bf5af2,#ff375f)', q: 'שירי מסיבה ישראלים להיטים' },
+      { title: 'ים תיכוני', desc: 'מזרחית בלב מלא', grad: 'linear-gradient(135deg,#ff9f0a,#ff453a)', q: 'מוזיקה מזרחית להיטים' },
+      { title: 'עצב', desc: 'שירים מחבקים', grad: 'linear-gradient(135deg,#0a84ff,#5e5ce6)', q: 'שירי עצב ישראלים' },
+    ].forEach(m => body.appendChild(heroCard({ title: m.title, kicker: 'במיוחד עבורך', desc: m.desc, grad: m.grad, img: '', tap: () => playSearch(m.q, m.title) })));
+    box.appendChild(sec);
+  }
+
+  /* 7. אומנים מועדפים: circle cards */
+  {
+    const favs = Object.entries(state.favArtists).map(([chId, a]) => ({ chId, name: a.name, avatar: a.avatar }));
+    const names = [...new Set([...favs.map(f => f.name), ...seeds])].slice(0, 8);
+    if (names.length) {
+      const { sec, body } = sectionEl('אומנים מועדפים', 'hscroll circles');
+      names.forEach((n, i) => {
+        const f = favs.find(x => x.name === n);
+        body.appendChild(circleArtistCard(n, f && f.avatar, GRADS[i % GRADS.length], () => {
+          if (f && f.chId) openArtist(f.chId, f.name, f.avatar);
+          else playSearch(n, n);
+        }));
+      });
+      box.appendChild(sec);
+    }
+  }
+
+  /* 8. הוצאות אחרונות: big squares */
+  fillSec(() => sectionEl('הוצאות אחרונות', 'hscroll bigsq'), 'סינגלים חדשים ישראל 2026', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
+
+  listenLoaded = Date.now();
+}
+
+/* hero card: full-bleed ~68vw x ~84vw, big bold overlay, kicker+desc at bottom */
+function heroCard(hc) {
+  const el = document.createElement('div');
+  el.className = 'herocard';
+  el.innerHTML = `
+    ${hc.img ? `<img loading="lazy" crossorigin="anonymous" src="${hc.img}" alt="">` : ''}
+    <div class="hc-bg" style="background:${hc.grad}"></div>
+    <div class="hc-scrim"></div>
+    <div class="hc-tx">
+      <div class="hc-title"></div>
+      <div class="hc-kicker"></div>
+      <div class="hc-desc"></div>
+    </div>`;
+  el.querySelector('.hc-title').textContent = hc.title;
+  el.querySelector('.hc-kicker').textContent = hc.kicker;
+  el.querySelector('.hc-desc').textContent = hc.desc;
+  el.addEventListener('click', hc.tap);
+  return el;
+}
+/* square card, caption below (Apple Home style) */
+function sqCapCard(t, onTap, sub) {
+  const el = document.createElement('div');
+  el.className = 'card sqcap';
+  el.innerHTML = `<img loading="lazy" src="${thumb(t.id, 'hq')}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
+  el.querySelector('.ct').textContent = t.title;
+  el.querySelector('.cs').textContent = sub != null ? sub : (t.artist || '');
+  el.addEventListener('click', onTap);
+  return el;
+}
+/* wide landscape card, caption below */
+function wideCapCard(t, onTap) {
+  const el = document.createElement('div');
+  el.className = 'card widecap';
+  el.innerHTML = `<img loading="lazy" src="${thumb(t.id, 'hq')}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
+  el.querySelector('.ct').textContent = t.title;
+  el.querySelector('.cs').textContent = t.artist || '';
+  el.addEventListener('click', onTap);
+  return el;
+}
+/* favorite artist: circle photo on tinted card */
+function circleArtistCard(name, avatar, grad, onTap) {
+  const el = document.createElement('div');
+  el.className = 'card circlecard';
+  el.innerHTML = `<div class="cc-bg" style="background:${grad}">${avatar ? `<img loading="lazy" src="${avatar}" alt="">` : `<div class="cc-ph"><span></span></div>`}</div><div class="ct"></div><div class="cs dim">התחנה שלו</div>`;
+  if (!avatar) el.querySelector('.cc-ph span').textContent = name.trim()[0] || '';
+  el.querySelector('.ct').textContent = name;
+  el.addEventListener('click', onTap);
+  return el;
 }
 
 /* ---------- עיון (Browse) ---------- */

@@ -559,3 +559,57 @@ body.vid #ytwrap { display: block; }
 /* dev version chip */
 #verChip { position: fixed; top: calc(env(safe-area-inset-top) + 6px); inset-inline-start: 8px; z-index: 7; font-size: 10px; font-weight: 600; color: var(--dim); opacity: .55; background: rgba(255,255,255,.6); border: 0.5px solid rgba(0,0,0,.06); border-radius: 6px; padding: 1px 6px; cursor: pointer; }
 @media (min-width: 820px) { #verChip { inset-inline-start: auto; left: 10px; } }
+
+/* ---------- Home 1:1 (Apple Music עמוד הבית) ---------- */
+.asec > h3 { display: flex; align-items: center; gap: 4px; font-size: 18px; }
+.asec > h3::after { content: "\2039"; font-weight: 400; color: var(--dim); font-size: 17px; margin-top: -2px; }
+.empty.inline { padding: 10px 4px; }
+.empty.inline p { font-size: 13px; color: var(--dim); margin: 0; }
+
+/* hero carousel (בחירות מובילות עבורך) */
+.asec-body.heroes { gap: 12px; }
+.herocard {
+  position: relative; flex: 0 0 auto; width: min(66vw, 290px); aspect-ratio: 0.82;
+  border-radius: 16px; overflow: hidden; cursor: pointer; scroll-snap-align: start;
+  background: var(--card);
+  box-shadow: 0 6px 20px rgba(0,0,0,.12);
+}
+.herocard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.herocard .hc-bg { position: absolute; inset: 0; mix-blend-mode: normal; }
+.herocard img + .hc-bg { opacity: .28; }
+.herocard .hc-scrim { position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,0) 40%, rgba(0,0,0,.45)); }
+.herocard .hc-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 18px; text-align: right; }
+.herocard .hc-title { order: -1; margin-bottom: auto; padding-top: 6px; font-size: 30px; font-weight: 800; line-height: 1.15; color: #fff; text-shadow: 0 2px 14px rgba(0,0,0,.35); white-space: pre-line; }
+.herocard .hc-kicker { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.85); }
+.herocard .hc-desc { font-size: 12px; color: rgba(255,255,255,.8); margin-top: 3px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* square + caption below */
+.card.sqcap { width: 150px; }
+.card.sqcap img { border-radius: 10px; }
+.asec-body.bigsq .card.sqcap { width: 200px; }
+.card.sqcap .ct { font-size: 13px; font-weight: 600; }
+.card.sqcap .cs { font-size: 12px; }
+
+/* wide landscape + caption */
+.asec-body.wide .card.widecap { width: 252px; }
+.card.widecap img { aspect-ratio: 4/3; border-radius: 10px; }
+.card.widecap .ct { font-size: 13px; font-weight: 600; }
+.card.widecap .cs { font-size: 12px; }
+
+/* favorite artists circle cards */
+.asec-body.circles .card.circlecard { width: 150px; }
+.circlecard .cc-bg { width: 100%; aspect-ratio: 1; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.circlecard .cc-bg img { width: 76%; aspect-ratio: 1; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.circlecard .cc-ph { width: 76%; aspect-ratio: 1; border-radius: 50%; background: rgba(255,255,255,.9); display: flex; align-items: center; justify-content: center; }
+.circlecard .cc-ph span { font-size: 44px; font-weight: 800; color: rgba(0,0,0,.45); }
+.circlecard .ct { font-size: 13px; font-weight: 600; text-align: center; }
+.circlecard .cs { font-size: 12px; text-align: center; }
+
+@media (min-width: 820px) {
+  .herocard { width: 300px; }
+  .card.sqcap { width: 170px; }
+  .asec-body.bigsq .card.sqcap { width: 230px; }
+  .asec-body.wide .card.widecap { width: 300px; }
+  .herocard .hc-title { font-size: 32px; }
+}
