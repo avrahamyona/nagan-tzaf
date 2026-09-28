@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v34b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1174,39 +1174,44 @@ function switchTab(name) {
 }
 document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
-/* draggable liquid-glass tab bubble (iOS 26 style) */
+/* draggable liquid-glass tab bubble (iOS 26 style) - horizontal on phone, vertical in the desktop sidebar */
 (function tabGlassDrag() {
   const bar = $('tabbar'), g = document.querySelector('.tabglass');
   if (!bar || !g) return;
-  let dragging = false, startX = 0, baseLeft = 0, lastX = 0, lastT = 0, vx = 0, pid = null, baseW = 0, suppressClick = false;
+  let dragging = false, vertical = false, startP = 0, basePos = 0, lastP = 0, lastT = 0, v = 0, pid = null, baseSize = 0, suppressClick = false;
   bar.addEventListener('pointerdown', e => {
+    const btns = [...bar.querySelectorAll('.tabbtn')];
+    vertical = btns.length > 1 && btns[1].offsetTop > btns[0].offsetTop + 4;
     dragging = true; pid = e.pointerId;
-    startX = lastX = e.clientX; lastT = performance.now(); vx = 0;
-    baseLeft = g.offsetLeft; baseW = g.offsetWidth;
+    startP = lastP = vertical ? e.clientY : e.clientX; lastT = performance.now(); v = 0;
+    basePos = vertical ? g.offsetTop : g.offsetLeft; baseSize = vertical ? g.offsetHeight : g.offsetWidth;
     g.style.transition = 'none';
     try { bar.setPointerCapture(pid); } catch {}
   });
   bar.addEventListener('pointermove', e => {
     if (!dragging || e.pointerId !== pid) return;
+    const p = vertical ? e.clientY : e.clientX;
     const now = performance.now();
-    vx = 0.75 * vx + 0.25 * ((e.clientX - lastX) / Math.max(1, now - lastT) * 16);
-    lastX = e.clientX; lastT = now;
-    const stretch = 1 + Math.min(Math.abs(vx) * 0.025, 0.3);
-    const w = baseW * stretch;
-    const x = Math.max(2, Math.min(bar.clientWidth - w - 2, baseLeft + (e.clientX - startX) - (w - baseW) / 2));
-    g.style.left = x + 'px';
-    g.style.width = w + 'px';
+    v = 0.75 * v + 0.25 * ((p - lastP) / Math.max(1, now - lastT) * 16);
+    lastP = p; lastT = now;
+    const stretch = 1 + Math.min(Math.abs(v) * 0.025, 0.3);
+    const size = baseSize * stretch;
+    const barSize = vertical ? bar.clientHeight : bar.clientWidth;
+    let x = basePos + (p - startP) - (size - baseSize) / 2;
+    x = Math.max(2, Math.min(barSize - size - 2, x));
+    if (vertical) { g.style.top = x + 'px'; g.style.height = size + 'px'; }
+    else { g.style.left = x + 'px'; g.style.width = size + 'px'; }
   });
   const end = e => {
     if (!dragging || (e && e.pointerId !== pid)) return;
     dragging = false;
-    if (Math.abs(lastX - startX) > 12) suppressClick = true;
+    if (Math.abs(lastP - startP) > 12) suppressClick = true;
     g.style.transition = '';
-    const cx = g.offsetLeft + g.offsetWidth / 2;
+    const c = (vertical ? g.offsetTop : g.offsetLeft) + (vertical ? g.offsetHeight : g.offsetWidth) / 2;
     let best = null, bd = 1e9;
     bar.querySelectorAll('.tabbtn').forEach(b => {
-      const c = b.offsetLeft + b.offsetWidth / 2;
-      const d = Math.abs(c - cx);
+      const bc = (vertical ? b.offsetTop : b.offsetLeft) + (vertical ? b.offsetHeight : b.offsetWidth) / 2;
+      const d = Math.abs(bc - c);
       if (d < bd) { bd = d; best = b; }
     });
     if (best) switchTab(best.dataset.tab);
