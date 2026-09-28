@@ -1,4 +1,4 @@
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -1302,44 +1302,69 @@ function parseLRC(s) {
 }
 // The catalogue often carries uploader suffixes; normalize them, but never display
 // another song's lyrics just because a fuzzy search returned something.
-function lyricKey(s) {
-  return normTxt(String(s || '').replace(/\s*[-–—]\s*(topic|הערוץ הרשמי|official(?: video| audio)?)\s*$/i, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function lyricQueryTitle(s) {
+  return String(s || '').normalize('NFKC')
+    .replace(/[\u05F3\u2018\u2019\u0060\u00B4]/g, "'")
+    .replace(/[\u05F4\u201C\u201D]/g, '"')
+    .replace(/\s*[-–—]\s*(?:topic|הערוץ הרשמי|official(?: music)? (?:video|audio))\s*$/i, '')
+    .replace(/\s*\((?:official(?: music)? (?:video|audio)|audio only|lyrics?)\)\s*$/i, '')
+    .trim();
 }
+function lyricKey(s) { return normTxt(lyricQueryTitle(s)).replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
 function lyricMatch(x, t) {
   const title = lyricKey(t.title), artist = lyricKey(t.artist);
   const xt = lyricKey(x.trackName || x.name), xa = lyricKey(x.artistName);
-  if (!title || !xt || !(xt === title || xt.includes(title) && title.length > 6)) return false;
+  if (!title || !xt || !(xt === title || (xt.includes(title) && title.length > 6))) return false;
   if (artist && xa && xa !== artist && !xa.includes(artist) && !artist.includes(xa)) return false;
   if (t.dur && x.duration && Math.abs(x.duration - t.dur) > 8) return false;
   return !!(x.syncedLyrics || x.plainLyrics || x.instrumental);
 }
 async function lyricRequest(url, ms = 7000) {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), ms);
-  try { const r = await fetch(url, { signal: ctl.signal }); return r.ok ? await r.json() : null; }
-  catch { return null; }
-  finally { clearTimeout(timer); }
-}
-async function fetchLyrics(t) {
-  const q = new URLSearchParams({ track_name: t.title, artist_name: t.artist });
-  if (t.dur) q.set('duration', Math.round(t.dur));
   for (let attempt = 0; attempt < 2; attempt++) {
-    const j = await lyricRequest('https://lrclib.net/api/get?' + q);
-    if (j && lyricMatch(j, t)) return j;
-    if (attempt === 0) await new Promise(r => setTimeout(r, 450));
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const r = await fetch(url, { signal: ctl.signal });
+      if (r.ok) return await r.json();
+      if (r.status !== 429 && r.status !== 503) return null;
+    } catch { /* bounded retry on a transient network error */ }
+    finally { clearTimeout(timer); }
+    if (!attempt) await new Promise(resolve => setTimeout(resolve, 450));
   }
-  const urls = [
-    'https://lrclib.net/api/search?track_name=' + encodeURIComponent(t.title) + '&artist_name=' + encodeURIComponent(t.artist),
-    'https://lrclib.net/api/search?q=' + encodeURIComponent([t.title, t.artist].filter(Boolean).join(' ')),
-  ];
-  for (const url of urls) {
+  return null;
+}
+const lyricCache = new Map();
+async function fetchLyrics(t) {
+  if (!t?.title || !t?.artist) return null;
+  const title = lyricQueryTitle(t.title);
+  const artist = lyricQueryTitle(t.artist);
+  const key = [title, artist, Math.round(t.dur || 0)].join('|');
+  const cached = lyricCache.get(key);
+  if (cached && Date.now() - cached.at < (cached.value ? 60 * 60 * 1000 : 2 * 60 * 1000)) return cached.value;
+  const q = new URLSearchParams({ track_name: title, artist_name: artist });
+  if (t.dur) q.set('duration', Math.round(t.dur));
+  let j = await lyricRequest('https://lrclib.net/api/get?' + q);
+  if (j && lyricMatch(j, t)) { lyricCache.set(key, { at: Date.now(), value: j }); return j; }
+  const variants = [title];
+  // A punctuation-neutral query helps Hebrew geresh and curly quotes, which
+  // LRCLIB indexes inconsistently. The returned artist/title/duration still
+  // have to match; this only changes the lookup words, not the identity check.
+  const punctuationNeutral = title.replace(/[\u05F3'\u2018\u2019\u0060\u00B4]/g, '');
+  if (punctuationNeutral !== title) variants.push(punctuationNeutral);
+  const urls = [];
+  for (const v of variants) urls.push('https://lrclib.net/api/search?track_name=' + encodeURIComponent(v) + '&artist_name=' + encodeURIComponent(artist));
+  urls.push('https://lrclib.net/api/search?q=' + encodeURIComponent([punctuationNeutral, artist].filter(Boolean).join(' ')));
+  for (const url of [...new Set(urls)]) {
     const arr = await lyricRequest(url);
     if (!Array.isArray(arr)) continue;
     const matches = arr.filter(x => lyricMatch(x, t));
-    if (matches.length) return matches.sort((a, b) =>
-      Number(!!b.syncedLyrics) - Number(!!a.syncedLyrics) ||
-      Math.abs((a.duration || t.dur || 0) - (t.dur || 0)) - Math.abs((b.duration || t.dur || 0) - (t.dur || 0)))[0];
+    if (matches.length) {
+      j = matches.sort((a, b) => Number(!!b.syncedLyrics) - Number(!!a.syncedLyrics) ||
+        Math.abs((a.duration || t.dur || 0) - (t.dur || 0)) - Math.abs((b.duration || t.dur || 0) - (t.dur || 0)))[0];
+      lyricCache.set(key, { at: Date.now(), value: j }); return j;
+    }
   }
+  lyricCache.set(key, { at: Date.now(), value: null });
   return null;
 }
 function curTimeS() { return activeAudio() ? (M().currentTime || 0) : (ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0); }
