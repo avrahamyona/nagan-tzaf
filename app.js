@@ -1,4 +1,4 @@
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2013,8 +2013,33 @@ $('plDelete').addEventListener('click', () => {
 
 /* ---------- דף אלבום ---------- */
 let alCur = null, alTracks = [];
+let alSeq = 0;
+async function loadAlbumTracks(a) {
+  let j = null;
+  try { j = await pipedFetch('/playlists/' + a.plId, 9000); } catch {}
+  const primary = (j?.relatedStreams || []).filter(x => x.url && x.type === 'stream').map(mapStream).filter(t => t.id);
+  if (primary.length) return { tracks: primary, name: j.name || a.title, uploader: j.uploader || a.artistName || '' };
+  // YouTube Music album IDs sometimes return a valid Piped playlist with a count
+  // but zero relatedStreams. Use playlist metadata from a separate public reader;
+  // never fill an album with search guesses or arbitrary similarly named songs.
+  if (!/^OLAK5uy_[A-Za-z0-9_-]+$/.test(a.plId)) return { tracks: [], name: a.title, uploader: a.artistName || '' };
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch('https://inv.nadeko.net/api/v1/playlists/' + encodeURIComponent(a.plId), { signal: ctl.signal });
+    if (!r.ok) throw new Error('playlist fallback ' + r.status);
+    const data = await r.json();
+    if (data.playlistId !== a.plId || !Array.isArray(data.videos)) throw new Error('playlist identity mismatch');
+    return { tracks: data.videos.filter(v => /^[A-Za-z0-9_-]{11}$/.test(v.videoId || '')).map(v => ({
+      id: v.videoId, title: v.title || '', artist: a.artistName || v.author || '',
+      dur: Number(v.lengthSeconds) || 0, ch: v.authorId || ''
+    })).filter(t => t.title), name: data.title || a.title, uploader: a.artistName || data.author || '' };
+  } finally { clearTimeout(timer); }
+}
 async function openAlbum(a) {
-  alCur = a;
+  const seq = ++alSeq;
+  $('alPlay').style.display = ''; $('alShuffle').style.display = '';
+  $('alArtist').classList.toggle('link', !!a.artistName);
+  alTracks = []; alCur = a;
   $('alArt').src = a.thumb || '';
   $('alTitle').textContent = a.title;
   $('alArtist').textContent = a.artistName || '';
@@ -2022,17 +2047,20 @@ async function openAlbum(a) {
   $('alTracks').innerHTML = '<div class="empty"><p>טוען...</p></div>';
   openPage('page-album');
   try {
-    const j = await pipedFetch('/playlists/' + a.plId, 9000);
-    alTracks = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
-    if (j.name) $('alTitle').textContent = j.name;
-    if (j.uploader) { $('alArtist').textContent = j.uploader; $('alArtist').classList.add('link'); }
+    const { tracks, name, uploader } = await loadAlbumTracks(a);
+    if (seq !== alSeq) return;
+    alTracks = tracks;
+    $('alTitle').textContent = name.replace(/^Album [–-] /i, '');
+    $('alArtist').textContent = uploader;
+    $('alArtist').classList.toggle('link', !!uploader);
     $('alMeta').textContent = alTracks.length + ' שירים';
-    const box = $('alTracks'); box.innerHTML = '';
+    const box = $('alTracks'); box.replaceChildren();
+    if (!alTracks.length) { box.innerHTML = '<div class="empty"><p>רשימת השירים של האלבום לא זמינה כרגע.</p></div>'; return; }
     alTracks.forEach((t, i) => box.appendChild(trackRow(t, {
       num: i + 1, noArt: true,
       onPlay: () => playQueue(alTracks, i),
     })));
-  } catch { $('alTracks').innerHTML = '<div class="empty"><p>לא הצלחתי לטעון את האלבום כרגע</p></div>'; }
+  } catch { if (seq === alSeq) $('alTracks').innerHTML = '<div class="empty"><p>לא הצלחתי לטעון את השירים של האלבום כרגע.</p></div>'; }
 }
 $('alArtist').addEventListener('click', () => {
   const name = $('alArtist').textContent;
