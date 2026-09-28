@@ -132,9 +132,10 @@ svg use { pointer-events: none; }
 .cat {
   border-radius: 10px; height: 96px; padding: 12px; position: relative; overflow: hidden;
   font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: flex-end;
+  background-size: cover; background-position: center 28%;
 }
 .cat img { position: absolute; top: -14px; left: -16px; width: 78px; height: 78px; object-fit: cover; border-radius: 8px; transform: rotate(25deg); box-shadow: -4px 4px 10px rgba(0,0,0,.35); }
-.cat span { position: relative; z-index: 1; text-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.cat span { position: relative; z-index: 1; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.45); }
 
 /* artist hit row */
 .artisthit { display: flex; align-items: center; gap: 14px; padding: 10px 4px; cursor: pointer; border-bottom: 1px solid var(--sep); }
@@ -542,3 +543,8 @@ body.vid #ytwrap { display: block; }
 .lyrsnip b{color:#fa2d48;font-weight:600}
 .qsect{margin:14px 4px 6px;font-size:14px;font-weight:700;color:rgba(20,20,25,.55)}
 .row.qhist{opacity:.55}
+
+@media (min-width: 820px) {
+  .catgrid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cat { height: 122px; font-size: 18px; }
+}

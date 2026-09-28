@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Avi Music">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png?v=30">
-<link rel="apple-touch-icon" href="icon-180.png?v=30">
+<link rel="icon" type="image/png" href="icon-192.png?v=31">
+<link rel="apple-touch-icon" href="icon-180.png?v=31">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=30">
+<link rel="stylesheet" href="style.css?v=31">
 </head>
 <body>
 
@@ -31,7 +31,10 @@
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.7 5.3c.4-.4 1-.4 1.4 0l3.9 3.9 3.9-3.9c.4-.4 1-.4 1.4 0s.4 1 0 1.4L13.4 12l3.9 3.9c.4.4.4 1 0 1.4s-1 .4-1.4 0L12 13.4l-3.9 3.9c-.4.4-1 .4-1.4 0s-.4-1 0-1.4l3.9-3.9-3.9-3.9c-.4-.4-.4-1 0-1.4z"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.2 4.2a1.05 1.05 0 0 0 1.5-1.5l-4.2-4.2A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></symbol>
     <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></symbol>
-    <symbol id="i-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.3C7.2 16.9 3.4 13.6 3.4 9.6 3.4 7 5.4 5 7.9 5c1.7 0 3.2.9 4.1 2.4C12.9 5.9 14.4 5 16.1 5c2.5 0 4.5 2 4.5 4.6 0 4-3.8 7.3-8.6 10.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+<symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20.3C7.2 16.9 3.4 13.6 3.4 9.6 3.4 7 5.4 5 7.9 5c1.7 0 3.2.9 4.1 2.4C12.9 5.9 14.4 5 16.1 5c2.5 0 4.5 2 4.5 4.6 0 4-3.8 7.3-8.6 10.7z"/></symbol>
+<symbol id="i-cast" viewBox="0 0 24 24"><path d="M12 13.4 7.1 19.4h9.8z" fill="currentColor"/><path d="M8.9 12.1a4.4 4.4 0 0 1 6.2 0M6 9.2a8.5 8.5 0 0 1 12 0M3.2 6.4a12.6 12.6 0 0 1 17.6 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
     <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M9.6 16.2 5.4 12c-.4-.4-1-.4-1.4 0s-.4 1 0 1.4l4.9 4.9c.4.4 1 .4 1.4 0L20.9 7.6c.4-.4.4-1 0-1.4s-1-.4-1.4 0L9.6 16.2z"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4.5c.5 0 .9.4.9.9v5.7h5.7c.5 0 .9.4.9.9s-.4.9-.9.9h-5.7v5.7c0 .5-.4.9-.9.9s-.9-.4-.9-.9v-5.7H5.4c-.5 0-.9-.4-.9-.9s.4-.9.9-.9h5.7V5.4c0-.5.4-.9.9-.9z"/></symbol>
@@ -229,6 +232,7 @@
     <div class="volrow"><svg class="vsm"><use href="#i-note"/></svg><input id="vol" type="range" min="0" max="100"><svg class="vlg"><use href="#i-note"/></svg></div>
     <div class="pbottom">
       <button id="cLyrics" class="ibtn"><svg><use href="#i-lyrics"/></svg></button>
+      <button id="cCast" class="ibtn"><svg><use href="#i-cast"/></svg></button>
       <a id="cOpenYT" class="ibtn" target="_blank" rel="noopener"><svg><use href="#i-share"/></svg></a>
       <button id="cQueue" class="ibtn"><svg><use href="#i-queue"/></svg></button>
     </div>
@@ -285,6 +289,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

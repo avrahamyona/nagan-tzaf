@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -666,7 +666,7 @@ function paintNow() {
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
   setIcon($('cRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
-  setIcon($('pFav'), state.fav[t.id] ? 'star-fill' : 'star');
+  setIcon($('pFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('pFav').classList.toggle('on', !!state.fav[t.id]);
   updateMediaSession();
   paintPlayingRows();
@@ -727,8 +727,8 @@ function openSongSheet(t, opts = {}) {
   $('songSheetHead').innerHTML = `<img src="${thumb(t.id)}" alt=""><div class="meta"><div class="t"></div><div class="a dim"></div></div>`;
   $('songSheetHead').querySelector('.t').textContent = t.title;
   $('songSheetHead').querySelector('.a').textContent = t.artist;
-  setIcon($('ssFav'), state.fav[t.id] ? 'star-fill' : 'star');
-  $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'הסר מהמועדפים' : 'הוסף למועדפים';
+  setIcon($('ssFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
+  $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'בטל אהבתי' : 'אהבתי';
   $('ssArtist').classList.toggle('hidden', !t.ch);
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
   openSheet('songSheet');
@@ -906,6 +906,34 @@ $('cRepeat').addEventListener('click', () => {
   toast(state.repeat === 'off' ? 'בלי חזרה' : state.repeat === 'all' ? 'חזרה על הרשימה' : 'חזרה על השיר');
 });
 $('cLyrics').addEventListener('click', openLyrics);
+
+/* ---------- AirPlay / cast ---------- */
+$('cCast').addEventListener('click', async () => {
+  try {
+    // iOS Safari exposes AirPlay only on video elements
+    if (clipEl.webkitShowPlaybackTargetPicker) {
+      if (engine === 'audio' && audioEl.src && !videoMode) {
+        // route the current audio stream through the video element so AirPlay can pick it up
+        const pos = audioEl.currentTime || 0, wasPlaying = !audioEl.paused;
+        clipEl.dataset.vid = audioEl.dataset.vid;
+        clipEl.src = audioEl.src;
+        try { clipEl.currentTime = pos; } catch {}
+        audioEl.pause();
+        engine = 'clip'; paintEngineBadge();
+        if (wasPlaying) clipEl.play().catch(() => {});
+      } else if (engine === 'yt') {
+        toast('שידור זמין במצב שמע ישיר או קליפ');
+        return;
+      }
+      clipEl.webkitShowPlaybackTargetPicker();
+      return;
+    }
+    const el = activeAudio() ? M() : null;
+    if (el && el.remote && el.remote.prompt) { await el.remote.prompt(); return; }
+    toast('שידור לא נתמך בדפדפן הזה');
+  } catch (e) { /* user cancelled the picker */ }
+});
+
 
 /* ---------- lyrics view (in-app, Apple Music style) ---------- */
 const lyrSync = { lines: null, timer: 0, vid: '' };
@@ -1288,7 +1316,7 @@ function renderLibrary() {
     el.addEventListener('click', onTap);
     rows.appendChild(el);
   };
-  mkRow('שירים אהובים', 'i-star-fill', favList().length, () => openLocalPlaylist('שירים אהובים'));
+  mkRow('שירים אהובים', 'i-heart-fill', favList().length, () => openLocalPlaylist('שירים אהובים'));
   mkRow('הושמע לאחרונה', 'i-clock', state.history.length, () => openRecent());
   mkRow('אמנים', 'i-tab-listen', Object.keys(state.favArtists).length, () => openLibArtists());
   mkRow('אלבומים', 'i-note', Object.keys(state.albums).length, () => openLibAlbums());
@@ -1437,21 +1465,24 @@ function openLibAlbums() {
 
 /* ---------- חיפוש ---------- */
 const CATS = [
-  ['מזרחית', 'linear-gradient(135deg,#fa2d48,#8f0e28)', 'מוזיקה מזרחית'],
-  ['ישראלי', 'linear-gradient(135deg,#0a84ff,#0b3d91)', 'מוזיקה ישראלית'],
-  ['ערבית', 'linear-gradient(135deg,#30d158,#0f6e2c)', 'اغاني عربية'],
-  ['מוזיקה עולמית', 'linear-gradient(135deg,#bf5af2,#5e2a84)', 'world music hits'],
-  ['פופ', 'linear-gradient(135deg,#ff9f0a,#c93400)', 'pop hits'],
-  ['רגוע', 'linear-gradient(135deg,#64d2ff,#2a5a8f)', 'שירים רגועים'],
-  ['חתונות ואירועים', 'linear-gradient(135deg,#ff6961,#8f1d1d)', 'שירי חתונה ישראלים'],
-  ['להיטי ילדים', 'linear-gradient(135deg,#ffd60a,#c78a00)', 'שירי ילדים'],
+  // [label, fallback gradient, search query, curated tile image video-id]
+  // images curated: male artists / groups / objects only (tznius)
+  ['מזרחית', 'linear-gradient(135deg,#fa2d48,#8f0e28)', 'מוזיקה מזרחית', 'nJ86tCHfEFU'],
+  ['ישראלי', 'linear-gradient(135deg,#0a84ff,#0b3d91)', 'מוזיקה ישראלית', 'syi0CsyWqeA'],
+  ['ערבית', 'linear-gradient(135deg,#30d158,#0f6e2c)', 'اغاني عربية', 'lo1PkLBtckA'],
+  ['מוזיקה עולמית', 'linear-gradient(135deg,#bf5af2,#5e2a84)', 'world music hits', 'xd1XwBSxEhI'],
+  ['פופ', 'linear-gradient(135deg,#ff9f0a,#c93400)', 'pop hits', '_GWKkqNoyEA'],
+  ['רגוע', 'linear-gradient(135deg,#64d2ff,#2a5a8f)', 'שירים רגועים', 'kO1gvHp52l0'],
+  ['חתונות ואירועים', 'linear-gradient(135deg,#ff6961,#8f1d1d)', 'שירי חתונה ישראלים', '4j9wTHbZv2Q'],
+  ['להיטי ילדים', 'linear-gradient(135deg,#ffd60a,#c78a00)', 'שירי ילדים', '8HGuL75SYhw'],
 ];
 (function buildCats() {
   const g = $('catGrid');
-  CATS.forEach(([name, color, q]) => {
+  CATS.forEach(([name, color, q, imgId]) => {
     const el = document.createElement('div');
     el.className = 'cat';
     el.style.background = color;
+    if (imgId) el.style.backgroundImage = "linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.52)), url('https://i.ytimg.com/vi/" + imgId + "/hqdefault.jpg')";
     const sp = document.createElement('span');
     sp.textContent = name;
     el.appendChild(sp);
