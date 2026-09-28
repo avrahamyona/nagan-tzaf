@@ -1,4 +1,4 @@
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -95,17 +95,30 @@ function searchMusicCached(q) {
 }
 
 async function searchChannels(q) {
-  const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=music_artists');
-  return (j.items || [])
-    .filter(it => it.type === 'channel' && it.url)
-    .map(it => ({
-      chId: chFromUrl(it.url),
-      name: it.name || '',
-      avatar: it.thumbnail || '',
-      subs: it.subscriberCount > 0 ? it.subscriberCount : 0,
-      verified: !!it.verified,
-    }))
-    .filter(c => c.chId);
+  // music_artists covers YouTube Music profiles only; real-world channels
+  // (piyyut publishers, personal channels) exist only in the channels filter.
+  const mapCh = it => ({
+    chId: chFromUrl(it.url),
+    name: it.name || '',
+    avatar: it.thumbnail || '',
+    subs: it.subscriberCount > 0 ? it.subscriberCount : 0,
+    verified: !!it.verified,
+  });
+  const [artists, chans] = await Promise.allSettled([
+    pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=music_artists'),
+    pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=channels'),
+  ]);
+  const seen = new Set(); const out = [];
+  for (const r of [artists, chans]) {
+    if (r.status !== 'fulfilled') continue;
+    for (const it of (r.value.items || [])) {
+      if (it.type !== 'channel' || !it.url) continue;
+      const c = mapCh(it);
+      if (c.chId && !seen.has(c.chId)) { seen.add(c.chId); out.push(c); }
+    }
+  }
+  out.sort((a, b) => (b.subs || 0) - (a.subs || 0));
+  return out;
 }
 async function searchLyrics(q) {
   // lyric-line search: worker scrapes a web search engine for candidates and
