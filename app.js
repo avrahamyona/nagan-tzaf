@@ -1,4 +1,4 @@
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -494,7 +494,35 @@ function playQueue(tracks, idx, opts = {}) {
   pushHistory(t);
   loadTrack(t);
   paintNow(); save();
+  ensureUpNext();
 }
+
+/* up next: keep at least 10 recommendations queued (Apple Music shows ~10 ahead).
+   Base ranking = YouTube's related/watch-next graph; we re-weight by the artists
+   in local listening history (recent plays weigh more) so the vibe follows him. */
+let upNextFilling = false;
+async function ensureUpNext() {
+  if (upNextFilling || state.station || !state.queue.length) return;
+  const ahead = state.queue.length - state.qi - 1;
+  if (ahead >= 10) return;
+  const seed = state.queue[state.queue.length - 1];
+  if (!seed || !seed.id) return;
+  upNextFilling = true;
+  try {
+    const j = await pipedFetch('/streams/' + seed.id, 8000);
+    let rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
+    const inQ = new Set(state.queue.map(t => t.id));
+    const w = new Map();
+    const n = Math.max(1, state.history.length);
+    state.history.forEach((h, i) => { if (h.artist) w.set(h.artist, (w.get(h.artist) || 0) + 1 + i / n); });
+    rel = rel.filter(t => !inQ.has(t.id));
+    rel.sort((a, b) => (w.get(b.artist) || 0) - (w.get(a.artist) || 0));
+    const add = rel.slice(0, 12 - ahead);
+    if (add.length) { state.queue.push(...add); save(); }
+  } catch {}
+  upNextFilling = false;
+}
+
 async function stationRefill() {
   const st = state.station;
   if (!st) return false;
@@ -704,7 +732,6 @@ function paintNow() {
   else if (art.complete && art.naturalWidth === 0) setArt('maxres');
   $('pTitle').textContent = t.title; $('pArtist').textContent = t.artist;
   $('pArtist').classList.toggle('link', !!t.ch);
-  $('cOpenYT').href = 'https://music.youtube.com/watch?v=' + t.id;
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
   setIcon($('cRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
@@ -846,6 +873,16 @@ $('cQueue').addEventListener('click', () => {
     onPlay: () => { state.qi = state.qi + 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); closeSheet('queueSheet'); },
   })));
   openSheet('queueSheet');
+});
+
+
+/* share: deep link into OUR app (?song=<id>) - the future app share mechanism */
+$('cOpenYT').addEventListener('click', async () => {
+  const t = current(); if (!t) return;
+  const url = location.origin + location.pathname + '?song=' + t.id;
+  const data = { title: 'Avi Music', text: t.title + (t.artist ? ' · ' + t.artist : ''), url };
+  if (navigator.share) { try { await navigator.share(data); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(url); toast('הקישור לשיר הועתק'); } catch { toast(url, 6000); }
 });
 
 /* ---------- player open/close ---------- */
@@ -1103,7 +1140,7 @@ function ensureKaraoke() {
 function setKaraoke(amt) {
   karaAmt = amt;
   $('karaokeBtn').classList.toggle('on', amt > 0);
-  if (amt > 0 && !(engine === 'audio' && !videoMode)) { toast('קריוקי זמין במצב שמע ישיר'); return; }
+  if (amt > 0 && !(engine === 'audio' && !videoMode && audioEl.crossOrigin === 'anonymous')) { toast('קריוקי זמין במצב שמע ישיר'); return; }
   if (amt > 0) {
     if (!ensureKaraoke()) { toast('קריוקי לא זמין לשיר הזה'); return; }
     if (actx.state === 'suspended') actx.resume().catch(() => {});
@@ -2062,3 +2099,12 @@ if ('serviceWorker' in navigator) {
     location.reload();
   });
 }
+
+/* deep link: open Avi Music straight into a shared song */
+(function deepLink() {
+  const sid = new URLSearchParams(location.search).get('song');
+  if (!sid || !/^[A-Za-z0-9_-]{11}$/.test(sid)) return;
+  const t = { id: sid, title: 'שיר משותף', artist: '', dur: 0 };
+  playQueue([t], 0);
+  enrichTitle(t);
+})();
