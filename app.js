@@ -64,7 +64,25 @@ async function searchMusic(q, filter = 'music_songs') {
     if (r.status !== 'fulfilled') continue;
     for (const t of r.value) if (!seen.has(t.id)) { seen.add(t.id); out.push(t); }
   }
-  return out;
+  // relevance-sort the merged list: music_songs alone fills the first 20 slots,
+  // which would bury videos-only results (live piyyutim, rare uploads).
+  return out.map((t, i) => [t, i]).sort((a, b) => scoreTrack(b[0], q) - scoreTrack(a[0], q) || a[1] - b[1]).map(x => x[0]);
+}
+
+function normTxt(s) { return String(s || '').toLowerCase().replace(/[\u0591-\u05C7]/g, '').replace(/["'\u201C\u201D\u05F4\u05F3.,!?:;()\[\]\-]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function scoreTrack(t, q) {
+  const nq = normTxt(q); if (!nq) return 0;
+  const nt = normTxt(t.title), na = normTxt(t.artist);
+  let s = 0;
+  if (nt === nq) s += 120;
+  else if (nt.includes(nq)) s += 80;
+  else if (nt.startsWith(nq.split(' ')[0] || '')) s += 5;
+  const words = nq.split(' ').filter(w => w.length > 1);
+  let hits = 0;
+  for (const w of words) { if (nt.includes(w)) { hits++; s += 12; } else if (na.includes(w)) s += 4; }
+  if (words.length && hits === words.length) s += 40;
+  if (na && nq.includes(na)) s += 15;
+  return s;
 }
 async function searchChannels(q) {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=music_artists');
@@ -248,7 +266,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v34b';
+const APP_VERSION = 'v35';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
