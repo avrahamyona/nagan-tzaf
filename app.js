@@ -167,7 +167,7 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
@@ -187,11 +187,15 @@ function pickAudio(j) {
 async function resolveAudioUrl(vid) {
   if (STREAM_API) {
     const base = STREAM_API.replace(/\/$/, '');
-    try {
-      // Fast path: worker proxies audio bytes directly - just check it has a stream for this video.
-      const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
-      if (r.ok || r.status === 206) return base + '/audio/' + vid;
-    } catch {}
+    // Fast path: worker proxies audio bytes directly. Extraction can be flaky
+    // per edge location, so probe twice before giving up.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
+        if (r.ok || r.status === 206) return base + '/audio/' + vid;
+      } catch {}
+      if (!attempt) await new Promise(r => setTimeout(r, 1500));
+    }
   }
   try {
     return await Promise.any(PIPED_HOSTS.map(base => (async () => {

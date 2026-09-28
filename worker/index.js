@@ -43,7 +43,7 @@ function json(obj, status = 200) {
 
 async function extractFormat(vid) {
   const cache = caches.default;
-  const key = new Request(`https://avi-music-cache.local/fmt-v2/${vid}`);
+  const key = new Request(`https://avi-music-cache.local/fmt-v4/${vid}`);
   const hit = await cache.match(key);
   if (hit) {
     const j = await hit.json();
@@ -71,11 +71,28 @@ async function extractFormat(vid) {
       const best = muxed.length
         ? muxed.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
         : (mp4.length ? mp4 : auds).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      let clen = parseInt(best.contentLength || '0', 10) || 0;
+      // Estimate from bitrate x duration; googlevideo's reported total can be
+      // wildly wrong (observed 2.8GB on a 25MB file), so prefer the estimate
+      // whenever the declared/probed size looks inconsistent.
+      const durSec = parseInt((j.videoDetails || {}).lengthSeconds || '0', 10) || 0;
+      const est = (durSec && best.bitrate) ? Math.ceil((best.bitrate / 8) * durSec * 1.05) : 0;
+      if (!clen) {
+        try {
+          const p = await fetch(best.url, { headers: { Range: 'bytes=0-0', 'User-Agent': UA } });
+          const cr = p.headers.get('content-range') || '';
+          const mm = /\/(\d+)$/.exec(cr);
+          if (mm) clen = parseInt(mm[1], 10) || 0;
+          if (p.body) p.body.cancel().catch(() => {});
+        } catch (e) { /* leave 0 */ }
+      }
+      if (est && (!clen || clen > est * 3 || clen < est / 3)) clen = est;
+      if (!clen) continue; // cannot range-stream an unknown-length source safely
       const fmt = {
         url: best.url,
         mime: (best.mimeType || 'video/mp4').split(';')[0],
         bitrate: best.bitrate || 0,
-        contentLength: parseInt(best.contentLength || '0', 10) || 0,
+        contentLength: clen,
       };
       const resp = new Response(JSON.stringify({ exp: Date.now() + FMT_CACHE_TTL * 1000, fmt }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${FMT_CACHE_TTL}` },
@@ -124,6 +141,10 @@ function streamAudio(fmt, rangeHeader) {
         pos = chunkEnd + 1;
         if (pos > end) controller.close();
       } catch (e) {
+        // If we already delivered bytes, a failed tail chunk (e.g. estimated
+        // length overshoots the real EOF) must look like a clean end of file,
+        // not a network error.
+        if (pos > start) { controller.close(); return; }
         controller.error(e);
       }
     },
