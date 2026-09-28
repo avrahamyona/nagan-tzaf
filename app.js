@@ -106,6 +106,7 @@ let state = {
   albums: {},         // plId -> {plId,title,thumb,sub}
   history: [],        // recent tracks, newest first (max 40)
   station: null,      // {seed, name} when radio autoplay is on
+  resume: null,       // {pos, playing, vid} last known playback point
 };
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
@@ -120,7 +121,7 @@ function save() {
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums,
-      history: state.history.slice(0, 40),
+      history: state.history.slice(0, 40), resume: state.resume,
     }));
   } catch {}
 }
@@ -234,7 +235,7 @@ function loadTrack(t, opts = {}) {
     engine = 'audio';
     audioEl.src = url;
     if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
-    if (wasPlaying || hasGesture) audioEl.play().catch(() => { useYtEngine(t, opts.startAt); });
+    if (wasPlaying || hasGesture || opts.autoplay) audioEl.play().catch(() => { useYtEngine(t, opts.startAt); });
     else syncPlayUI(true);
   });
 }
@@ -327,11 +328,13 @@ function togglePlay() {
   const t = current();
   if (!t) return;
   if (activeAudio()) {
-    if (!audioEl.src || audioEl.dataset.vid !== t.id) { loadTrack(t); return; }
+    if (!audioEl.src || audioEl.dataset.vid !== t.id) { loadTrack(t, { startAt: takeRestorePos() }); return; }
     if (audioEl.paused) audioEl.play().catch(() => {}); else audioEl.pause();
     return;
   }
   if (!ytReady) return;
+  const rp = takeRestorePos();
+  if (rp && yt.getDuration && !yt.getCurrentTime()) { yt.loadVideoById({ videoId: t.id, startSeconds: rp }); return; }
   const st = yt.getPlayerState();
   if (st === YT.PlayerState.PLAYING) yt.pauseVideo(); else yt.playVideo();
 }
@@ -343,7 +346,7 @@ function updateMediaSession() {
   if (!t) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title, artist: t.artist, album: 'מוזיקה',
+      title: t.title, artist: t.artist, album: 'Avi Music',
       artwork: [
         { src: thumb(t.id, 'mq'), sizes: '320x180', type: 'image/jpeg' },
         { src: thumb(t.id, 'hq'), sizes: '480x360', type: 'image/jpeg' },
@@ -415,9 +418,9 @@ function tintPlayer(img) {
     for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
     r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
     const mix = (c, t, w) => Math.round(c * w + t * (1 - w));
-    const r1 = mix(r, 40, .55), g1 = mix(g, 40, .55), b1 = mix(b, 44, .55);
+    const r1 = mix(r, 244, .5), g1 = mix(g, 244, .5), b1 = mix(b, 246, .5);
     document.documentElement.style.setProperty('--np-bg1', `rgb(${r1},${g1},${b1})`);
-    document.documentElement.style.setProperty('--np-bg2', `rgb(${mix(r, 8, .2)},${mix(g, 8, .2)},${mix(b, 10, .2)})`);
+    document.documentElement.style.setProperty('--np-bg2', `rgb(${mix(r, 255, .25)},${mix(g, 255, .25)},${mix(b, 255, .25)})`);
   } catch {}
 }
 function paintNow() {
@@ -1272,10 +1275,40 @@ $('aDots').addEventListener('click', () => {
   else { state.favArtists[aCur.chId] = { name: aCur.name, avatar: aCur.avatar || '' }; save(); toast('נשמר בספריה ★'); setIcon($('aFav'), 'star-fill'); $('aFav').classList.add('on'); }
 });
 
-/* ---------- keep UI in sync when tab hidden ---------- */
+/* ---------- background continuity: save position, resume on return ---------- */
+function captureResume() {
+  const t = current();
+  if (!t) return;
+  let c = 0, paused = true;
+  if (activeAudio()) { if (!audioEl.src) return; c = audioEl.currentTime || 0; paused = audioEl.paused; }
+  else { if (!ytReady || !yt.getCurrentTime) return; c = yt.getCurrentTime() || 0; paused = yt.getPlayerState() !== YT.PlayerState.PLAYING; }
+  state.resume = { pos: c, playing: !paused, vid: t.id };
+}
+function saveResume() { captureResume(); save(); }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && current()) syncPlayUI(ytReady ? yt.getPlayerState() !== YT.PlayerState.PLAYING : true);
+  if (document.visibilityState === 'hidden') { saveResume(); return; }
+  const t = current();
+  if (!t) return;
+  // still playing (iOS let the audio run in the background)? just repaint.
+  const stillPlaying = activeAudio() ? (audioEl.src && !audioEl.paused)
+    : (ytReady && yt.getPlayerState && yt.getPlayerState() === YT.PlayerState.PLAYING);
+  if (stillPlaying) { syncPlayUI(false); paintNow(); return; }
+  const r = state.resume;
+  if (r && r.playing && r.vid === t.id) {
+    // playback was suspended: pick up exactly where it stopped
+    loadTrack(t, { startAt: Math.max(0, r.pos), autoplay: true });
+    toast('ממשיכים מאיפה שעצרנו');
+  } else {
+    syncPlayUI(true);
+    paintNow();
+  }
 });
+window.addEventListener('pagehide', saveResume);
+window.addEventListener('freeze', saveResume);
+
+/* restore position for the first play after a fresh launch */
+let restorePos = (state.resume && state.resume.pos) || 0;
+const takeRestorePos = () => { const p = restorePos; restorePos = 0; return p; };
 
 /* ---------- init ---------- */
 renderListen();

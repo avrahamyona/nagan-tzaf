@@ -1,16 +1,16 @@
 :root {
   --accent: #fa2d48;
-  --accent2: #fc5c7d;
-  --bg: #000000;
-  --card: #1c1c1e;
-  --card2: #2c2c2e;
-  --text: #ffffff;
-  --dim: rgba(235,235,245,.6);
-  --dim2: rgba(235,235,245,.35);
-  --sep: rgba(255,255,255,.08);
+  --accent2: #fa2d48;
+  --bg: #ffffff;
+  --card: #f2f2f4;
+  --card2: #e9e9eb;
+  --text: #000000;
+  --dim: rgba(60,60,67,.6);
+  --dim2: rgba(60,60,67,.33);
+  --sep: rgba(0,0,0,.08);
   --tabbar-h: 50px;
-  --np-bg1: #2a2a2c;
-  --np-bg2: #0a0a0b;
+  --np-bg1: #e8e8ea;
+  --np-bg2: #ffffff;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; height: 100%; }
@@ -403,3 +403,48 @@ body.vid #ytwrap { display: block; }
 .plph svg { width: 22px; height: 22px; color: var(--dim); }
 .stph { width: 100%; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 .stph span { font-size: 52px; font-weight: 700; color: rgba(255,255,255,.92); }
+
+/* ---------- light mode component overrides (Apple Music light) ---------- */
+#tabbar { background: rgba(250,250,252,.94); border-top-color: rgba(0,0,0,.08); }
+#mini { background: rgba(252,252,254,.97); box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+#mini .mbtn { color: #000; }
+.pageback { background: rgba(255,255,255,.72); color: #000; }
+.icircle { background: rgba(238,238,240,.9); color: #000; }
+.icircle.white { background: #000; color: #fff; }
+.sheetbox { background: #ffffff; }
+.sheetrow:active { background: var(--card); }
+.songsheethead .a { color: var(--dim); }
+.ppill { background: var(--card); }
+.latestcard { background: var(--card); }
+.ahero-fade { background: linear-gradient(rgba(0,0,0,.02) 30%, rgba(255,255,255,.55) 70%, var(--bg) 98%); }
+.aname { text-shadow: none; }
+.asub { color: var(--dim); }
+.pill.on { background: var(--accent); color: #fff; }
+.netnote { background: rgba(250,45,72,.08); }
+.empty { color: var(--dim); }
+.empty h2 { color: var(--text); }
+
+/* full player, light */
+#pBg { background: linear-gradient(165deg, var(--np-bg1) 0%, var(--np-bg2) 90%); }
+.pgrab { color: rgba(0,0,0,.55); }
+.svtoggle { background: rgba(0,0,0,.08); }
+.svtoggle .sv { color: rgba(0,0,0,.7); }
+.svtoggle .sv.on { background: #fff; color: #000; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+#pArt { border-color: rgba(0,0,0,.1); box-shadow: 0 14px 44px rgba(0,0,0,.25); background: rgba(0,0,0,.05); }
+.ptitle { color: #000; }
+.partist { color: rgba(0,0,0,.65); }
+.partist.link { color: var(--accent); }
+.ibtn { color: rgba(0,0,0,.8); }
+.ibtn.on { color: var(--accent); }
+#seek { background: rgba(0,0,0,.18); }
+.ttimes span { color: rgba(0,0,0,.45); }
+.cbtn { color: #000; }
+.volrow { color: rgba(0,0,0,.5); }
+#vol { background: rgba(0,0,0,.18); }
+#ffwd { background: rgba(255,255,255,.75); color: #000; }
+.gradcard .gc-note, .gradcard .gc-title { color: #fff; }
+.bigcard .bc-ov * { color: #fff; }
+.radiohero .rh-ov * { color: #fff; }
+.cat { color: #fff; }
+#toast { background: rgba(50,50,52,.97); color: #fff; }
+.row.playing .t { color: var(--accent); }

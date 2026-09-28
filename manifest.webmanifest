@@ -1,11 +1,11 @@
 {
-  "name": "מוזיקה",
-  "short_name": "מוזיקה",
+  "name": "Avi Music",
+  "short_name": "Avi Music",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "dir": "rtl",
   "lang": "he",
   "icons": [
