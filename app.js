@@ -208,7 +208,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v24b';
+const APP_VERSION = 'v25';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -898,8 +898,10 @@ function moveTabGlass() {
   const g = document.querySelector('.tabglass');
   const b = document.querySelector('.tabbtn.on');
   if (!g || !b) return;
-  g.style.width = b.offsetWidth + 'px';
   g.style.left = b.offsetLeft + 'px';
+  g.style.width = b.offsetWidth + 'px';
+  g.style.top = (b.offsetTop + 5) + 'px';
+  g.style.height = Math.max(0, b.offsetHeight - 10) + 'px';
 }
 function switchTab(name) {
   document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
