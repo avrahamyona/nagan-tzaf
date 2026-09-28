@@ -246,7 +246,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v29b';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
