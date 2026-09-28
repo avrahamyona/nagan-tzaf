@@ -263,10 +263,16 @@ function armAutoResume(el) {
   window.addEventListener('pageshow', onForeground);
 }
 const M = () => (engine === 'clip') ? clipEl : audioEl;
+(function verChip() {
+  const c = document.createElement('div');
+  c.id = 'verChip'; c.textContent = APP_VERSION; c.title = 'גרסה';
+  c.addEventListener('click', () => showStreamDiag());
+  document.body.appendChild(c);
+})();
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -277,7 +283,7 @@ function paintEngineBadge() {
   if (!b.__wired) { b.__wired = true; b.style.cursor = 'pointer'; b.addEventListener('click', showStreamDiag); }
   const map = { audio: ['שמע ישיר', '#34c759'], clip: ['קליפ ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
   const m = map[engine] || ['', ''];
-  b.innerHTML = m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' + APP_VERSION : '';
+  b.innerHTML = (m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' : '') + APP_VERSION;
 }
 const STREAM_API_DEFAULT = 'https://avi-music-audio.avi-music.workers.dev';
 const STREAM_API = new URLSearchParams(location.search).get('streamapi') || localStorage.getItem('nagan_stream_api') || STREAM_API_DEFAULT;
