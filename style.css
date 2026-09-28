@@ -132,7 +132,7 @@ svg use { pointer-events: none; }
 .cat {
   border-radius: 10px; height: 96px; padding: 12px; position: relative; overflow: hidden;
   font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: flex-end;
-  background-size: cover; background-position: center 28%;
+  background-size: cover; background-position: center center;
 }
 .cat img { position: absolute; top: -14px; left: -16px; width: 78px; height: 78px; object-fit: cover; border-radius: 8px; transform: rotate(25deg); box-shadow: -4px 4px 10px rgba(0,0,0,.35); }
 .cat span { position: relative; z-index: 1; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.45); }
