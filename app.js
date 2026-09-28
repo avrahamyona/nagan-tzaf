@@ -167,6 +167,14 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
+const APP_VERSION = 'v19';
+function paintEngineBadge() {
+  const b = document.getElementById('engineBadge');
+  if (!b) return;
+  const map = { audio: ['שמע ישיר', '#34c759'], yt: ['יוטיוב', '#ff3b30'], 'yt-pending': ['מתחבר...', '#ff9500'] };
+  const m = map[engine] || ['', ''];
+  b.innerHTML = m[0] ? '<span class="edot" style="background:' + m[1] + '"></span>' + m[0] + ' · ' + APP_VERSION : '';
+}
 const STREAM_API_DEFAULT = 'https://avi-music-audio.avi-music.workers.dev';
 const STREAM_API = new URLSearchParams(location.search).get('streamapi') || localStorage.getItem('nagan_stream_api') || STREAM_API_DEFAULT;
 
@@ -208,7 +216,7 @@ async function resolveAudioUrl(vid) {
 })();
 
 function useYtEngine(t, startAt) {
-  engine = 'yt';
+  engine = 'yt'; paintEngineBadge();
   try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch {}
   lastCur = -1;
   if (ytReady) yt.loadVideoById(startAt ? { videoId: t.id, startSeconds: startAt } : t.id);
@@ -218,12 +226,12 @@ function loadTrack(t, opts = {}) {
   if (!t) return;
   lastCur = -1;
   if (videoMode) { useYtEngine(t, opts.startAt); return; }
-  engine = 'audio';
+  engine = 'audio'; paintEngineBadge();
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
   const hasGesture = !!(navigator.userActivation && navigator.userActivation.isActive);
   if (hasGesture && ytReady) {
-    engine = 'yt-pending';
+    engine = 'yt-pending'; paintEngineBadge();
     yt.loadVideoById(opts.startAt ? { videoId: t.id, startSeconds: opts.startAt } : t.id);
   }
   resolveAudioUrl(t.id).then(url => {
@@ -235,7 +243,7 @@ function loadTrack(t, opts = {}) {
     }
     try { yt.pauseVideo(); } catch {}
     const wasPlaying = engine === 'yt-pending' && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-    engine = 'audio';
+    engine = 'audio'; paintEngineBadge();
     audioEl.src = url;
     if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
     if (wasPlaying || hasGesture || opts.autoplay) audioEl.play().catch(() => { useYtEngine(t, opts.startAt); });
@@ -1315,4 +1323,15 @@ const takeRestorePos = () => { const p = restorePos; restorePos = 0; return p; }
 
 /* ---------- init ---------- */
 renderListen();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.update();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  let swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloaded || !hadController) return; swReloaded = true;
+    location.reload();
+  });
+}
