@@ -1,4 +1,4 @@
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -688,8 +688,12 @@ function paintNow() {
   $('mTitle').textContent = t.title; $('mArtist').textContent = t.artist;
   const art = $('pArt');
   art.crossOrigin = 'anonymous';
-  art.onload = () => tintPlayer(art);
   const setArt = (q) => { art.dataset.q = q; art.src = sqThumb(t.id, q); };
+  art.onload = () => {
+    // YouTube answers a missing maxres/hq with a 200 120x90 placeholder
+    if (art.naturalWidth <= 121 && art.dataset.q !== 'mq') { setArt(art.dataset.q === 'maxres' ? 'hq' : 'mq'); return; }
+    tintPlayer(art);
+  };
   art.onerror = () => {
     const q = art.dataset.q;
     if (q === 'maxres') setArt('hq');
