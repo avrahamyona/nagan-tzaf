@@ -672,3 +672,7 @@ body.vid #ytwrap { display: block; }
   .volrow { padding-top: 12px; }
   .pbottom { margin-top: 10px; }
 }
+
+/* Explicit retry when no trustworthy lyric match is available. */
+#lyrRetry { display: block; margin: 18px auto 0; padding: 9px 16px; border-radius: 10px; background: rgba(255,255,255,.17); color: inherit; font-weight: 600; }
+@media (max-width: 819px) { body.vid #artWrap { align-items: center; } body.vid #ytwrap { max-height: 43dvh; } }

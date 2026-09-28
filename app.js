@@ -1,4 +1,4 @@
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -1164,21 +1164,46 @@ function parseLRC(s) {
   }
   return out.sort((a, b) => a.t - b.t);
 }
+// The catalogue often carries uploader suffixes; normalize them, but never display
+// another song's lyrics just because a fuzzy search returned something.
+function lyricKey(s) {
+  return normTxt(String(s || '').replace(/\s*[-–—]\s*(topic|הערוץ הרשמי|official(?: video| audio)?)\s*$/i, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+function lyricMatch(x, t) {
+  const title = lyricKey(t.title), artist = lyricKey(t.artist);
+  const xt = lyricKey(x.trackName || x.name), xa = lyricKey(x.artistName);
+  if (!title || !xt || !(xt === title || xt.includes(title) && title.length > 6)) return false;
+  if (artist && xa && xa !== artist && !xa.includes(artist) && !artist.includes(xa)) return false;
+  if (t.dur && x.duration && Math.abs(x.duration - t.dur) > 8) return false;
+  return !!(x.syncedLyrics || x.plainLyrics || x.instrumental);
+}
+async function lyricRequest(url, ms = 7000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); return r.ok ? await r.json() : null; }
+  catch { return null; }
+  finally { clearTimeout(timer); }
+}
 async function fetchLyrics(t) {
   const q = new URLSearchParams({ track_name: t.title, artist_name: t.artist });
   if (t.dur) q.set('duration', Math.round(t.dur));
-  try {
-    const r = await fetch('https://lrclib.net/api/get?' + q);
-    if (r.ok) { const j = await r.json(); if (j && (j.syncedLyrics || j.plainLyrics || j.instrumental)) return j; }
-  } catch {}
-  try {
-    const r = await fetch('https://lrclib.net/api/search?track_name=' + encodeURIComponent(t.title) + '&artist_name=' + encodeURIComponent(t.artist));
-    const arr = await r.json();
-    if (Array.isArray(arr)) {
-      return arr.find(x => (x.syncedLyrics || x.plainLyrics) && (!t.dur || Math.abs((x.duration || 0) - t.dur) < 6))
-        || arr.find(x => x.syncedLyrics || x.plainLyrics) || null;
-    }
-  } catch {}
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const j = await lyricRequest('https://lrclib.net/api/get?' + q);
+    if (j && lyricMatch(j, t)) return j;
+    if (attempt === 0) await new Promise(r => setTimeout(r, 450));
+  }
+  const urls = [
+    'https://lrclib.net/api/search?track_name=' + encodeURIComponent(t.title) + '&artist_name=' + encodeURIComponent(t.artist),
+    'https://lrclib.net/api/search?q=' + encodeURIComponent([t.title, t.artist].filter(Boolean).join(' ')),
+  ];
+  for (const url of urls) {
+    const arr = await lyricRequest(url);
+    if (!Array.isArray(arr)) continue;
+    const matches = arr.filter(x => lyricMatch(x, t));
+    if (matches.length) return matches.sort((a, b) =>
+      Number(!!b.syncedLyrics) - Number(!!a.syncedLyrics) ||
+      Math.abs((a.duration || t.dur || 0) - (t.dur || 0)) - Math.abs((b.duration || t.dur || 0) - (t.dur || 0)))[0];
+  }
   return null;
 }
 function curTimeS() { return activeAudio() ? (M().currentTime || 0) : (ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0); }
@@ -1197,10 +1222,11 @@ async function openLyrics() {
   const body = $('lyrBody');
   body.innerHTML = '<div class="lyrnote2 dim">טוען מילים…</div>';
   const j = await fetchLyrics(t);
-  if (lyrSync.vid !== t.id) return;
+  if (lyrSync.vid !== t.id || $('lyrView').classList.contains('hidden')) return;
   if (j && j.instrumental) { body.innerHTML = '<div class="lyrnote2 dim">שיר אינסטרומנטלי</div>'; return; }
   if (!j || (!j.syncedLyrics && !j.plainLyrics)) {
-    body.innerHTML = '<div class="lyrnote2 dim">אין מילים זמינות לשיר הזה</div>';
+    body.innerHTML = '<div class="lyrnote2 dim">אין מילים מאומתות לשיר הזה כרגע <button type="button" id="lyrRetry">נסה שוב</button></div>';
+    $('lyrRetry').addEventListener('click', () => openLyrics());
     return;
   }
   if (j.syncedLyrics) {
@@ -1648,6 +1674,33 @@ async function renderListen() {
     box.appendChild(sec);
   }
 
+  /* Listening-led categories: use this device's actual plays, not a hard-coded genre guess. */
+  if (seeds.length) {
+    const { sec, body, heading } = sectionEl('עוד מהאמנים שלך', 'hscroll bigsq');
+    let artistItems = [];
+    heading.addEventListener('click', () => sectionTracks('עוד מהאמנים שלך', artistItems));
+    body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
+    box.appendChild(sec);
+    Promise.allSettled(seeds.slice(0, 4).map(name => within(searchMusicCached(name), 17000)))
+      .then(results => {
+        if (!sec.isConnected) return;
+        const found = new Set(); artistItems = [];
+        results.forEach((result, i) => {
+          if (result.status !== 'fulfilled') return;
+          const artist = normTxt(seeds[i]);
+          // Match the artist metadata, rather than treating query relevance as proof.
+          for (const t of result.value) {
+            if (!t.id || found.has(t.id) || !normTxt(t.artist).includes(artist)) continue;
+            found.add(t.id); artistItems.push(t);
+          }
+        });
+        if (!artistItems.length) { sec.remove(); return; }
+        heading.disabled = artistItems.length <= 12;
+        body.replaceChildren();
+        artistItems.slice(0, 12).forEach(t => body.appendChild(sqCapCard(t, () => playQueue(artistItems, artistItems.indexOf(t)), t.artist)));
+      }).catch(() => sec.remove());
+  }
+
   /* ---- network sections: paint as they land ---- */
   const fillSec = (mkSec, q, cardFn, limit) => {
     const { sec, body, heading } = mkSec();
@@ -1670,7 +1723,7 @@ async function renderListen() {
     heading.addEventListener('click', () => sectionTracks('השירים החדשים הטובים ביותר', allItems));
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
-    searchMusicCached('שירים חדשים 2026 ישראל').then(items => {
+    searchMusicCached('שירים חדשים ישראל').then(items => {
       allItems = items;
       heading.disabled = items.length <= 8;
       body.innerHTML = '';
@@ -1679,10 +1732,10 @@ async function renderListen() {
   }
 
   /* 4. חדש השבוע: big squares */
-  fillSec(() => sectionEl('חדש השבוע', 'hscroll bigsq'), 'השירים הכי שמועים בישראל 2026', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
+  fillSec(() => sectionEl('מוזיקה חדשה', 'hscroll bigsq'), 'שירים פופולריים ישראל', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
 
   /* 5. כולם מקשיבים ל...: wide cards */
-  fillSec(() => sectionEl('כולם מקשיבים ל...', 'hscroll wide'), 'להיטים ישראלים 2026', (t, items) => wideCapCard(t, () => playQueue(items, items.indexOf(t))));
+  fillSec(() => sectionEl('כולם מקשיבים ל...', 'hscroll wide'), 'להיטים ישראלים', (t, items) => wideCapCard(t, () => playQueue(items, items.indexOf(t))));
 
   /* 6. פלייליסטים במיוחד עבורך: no generic mood labels without evidence in listening history. */
   if (h.length >= 2) {
@@ -1731,7 +1784,7 @@ async function renderListen() {
   }
 
   /* 8. הוצאות אחרונות: big squares */
-  fillSec(() => sectionEl('הוצאות אחרונות', 'hscroll bigsq'), 'סינגלים חדשים ישראל 2026', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
+  fillSec(() => sectionEl('סינגלים חדשים', 'hscroll bigsq'), 'סינגלים חדשים ישראל', (t, items) => sqCapCard(t, () => playQueue(items, items.indexOf(t)), t.artist));
 
   listenLoaded = Date.now();
 }
@@ -1806,7 +1859,7 @@ async function renderBrowse() {
       items.slice(0, 12).forEach(t => body.appendChild(sqCard(t, () => playQueue(items, items.indexOf(t)), t.artist)));
     } catch { body.innerHTML = '<div class="empty"><p>לא זמין כרגע</p></div>'; }
   };
-  fill(s1.body, 'שירים חדשים 2026 ישראל');
+  fill(s1.body, 'שירים חדשים ישראל');
   fill(s2.body, 'להיטים ישראלים');
   fill(s3.body, 'מוזיקה מזרחית להיטים');
   fill(s4.body, 'اغاني عربية');
@@ -2035,8 +2088,27 @@ let curPill = 'top', lastQuery = '';
 })();
 
 
-/* Search stays blank until the user submits a query; no history or suggestions. */
-function renderSearchHome() { $('searchHome').replaceChildren(); }
+/* Search home shows played songs and artists, never previously typed search words. */
+function renderSearchHome() {
+  const box = $('searchHome'); box.replaceChildren();
+  const recent = (state.history || []).filter(t => t && t.id).slice(0, 12);
+  if (recent.length) {
+    const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'הושמעו לאחרונה'; box.appendChild(h);
+    const all = state.history.filter(t => t && t.id);
+    recent.forEach(t => box.appendChild(trackRow(t, { onPlay: () => playQueue(all, all.findIndex(x => x.id === t.id)) })));
+  }
+  const artists = [...new Set((state.history || []).map(t => t.artist).filter(Boolean))].slice(0, 6);
+  if (artists.length) {
+    const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'אמנים שהאזנת להם'; box.appendChild(h);
+    artists.forEach(name => {
+      const row = document.createElement('button'); row.type = 'button'; row.className = 'row';
+      row.innerHTML = '<div class="meta"><div class="t"></div></div>';
+      row.querySelector('.t').textContent = name;
+      row.addEventListener('click', () => searchArtistAndOpen(name));
+      box.appendChild(row);
+    });
+  }
+}
 function hideSugg() { $('suggBox').replaceChildren(); $('suggBox').classList.add('hidden'); }
 
 let searchSeq = 0;
