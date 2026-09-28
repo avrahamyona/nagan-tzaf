@@ -339,14 +339,15 @@ body.vid #ytwrap { display: block; }
 .pcontrols .ibtn svg { width: 19px; height: 19px; }
 .seek10 { display: flex; justify-content: center; gap: 60px; margin-top: 2px; }
 .seek10 .ibtn svg { width: 24px; height: 24px; }
-.volrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: rgba(255,255,255,.6); }
-.volrow svg { width: 15px; height: 15px; }
+.volrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: rgba(255,255,255,.6); direction: ltr; }
+.volrow svg { width: 17px; height: 17px; flex: none; }
 .volrow .vlg { width: 19px; height: 19px; }
-.volrow .vbtn { background: none; border: 0; padding: 2px; color: inherit; cursor: pointer; display: flex; }
-.volrow .vbtn .vsm { width: 17px; height: 17px; }
-#vol { flex: 1; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px;
-  background: rgba(255,255,255,.25); outline: none; direction: ltr; }
-#vol::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: transparent; border: 0; }
+#vol { flex: 1; min-width: 0; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px;
+  background: linear-gradient(to right, rgba(0,0,0,.8) 0 var(--vol-fill, 90%), rgba(128,128,128,.14) var(--vol-fill, 90%) 100%);
+  outline: none; direction: ltr; cursor: pointer; touch-action: pan-x; }
+#vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 0; height: 6px; background: transparent; border: 0; }
+#vol::-moz-range-thumb { width: 0; height: 6px; background: transparent; border: 0; }
+#vol:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 .pbottom { display: flex; justify-content: space-between; margin-top: 12px; padding: 0 8px; }
 .pbottom .ibtn svg { width: 22px; height: 22px; }
 
@@ -461,7 +462,7 @@ body.vid #ytwrap { display: block; }
 .ttimes span { color: rgba(0,0,0,.45); }
 .cbtn { color: #000; }
 .volrow { color: rgba(0,0,0,.5); }
-#vol { background: rgba(0,0,0,.18); }
+
 #ffwd { background: rgba(255,255,255,.75); color: #000; }
 .gradcard .gc-note, .gradcard .gc-title { color: #fff; }
 .bigcard .bc-ov * { color: #fff; }
