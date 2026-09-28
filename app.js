@@ -1,4 +1,4 @@
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v51';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -244,7 +244,7 @@ function setAudioSrc(url) {
   // worker sends CORS headers, so opt into CORS just for worker URLs.
   if (url && url.includes('workers.dev')) audioEl.crossOrigin = 'anonymous';
   else audioEl.removeAttribute('crossorigin');
-  setAudioSrc(url);
+  audioEl.src = url;
 }
 audioEl.preload = 'none';
 const clipEl = $('clipEl');
@@ -1202,18 +1202,14 @@ function applyVolume() {
   try { audioEl.volume = v / 100; } catch {}
   try { clipEl.volume = v / 100; } catch {}
   if (ytReady && yt.setVolume) yt.setVolume(v);
-  const ic = $('volMuteIcon');
-  if (ic) ic.setAttribute('href', v === 0 ? '#i-vol-mute' : (v < 50 ? '#i-vol-low' : '#i-vol-high'));
-  if (volEl) volEl.value = v;
+  if (volEl) {
+    volEl.value = v;
+    volEl.style.setProperty('--vol-fill', `${v}%`);
+  }
 }
 volEl.addEventListener('input', () => {
   state.volume = +volEl.value; save();
   applyVolume();
-});
-$('volMute').addEventListener('click', () => {
-  if (state.volume > 0) { state._volBefore = state.volume; state.volume = 0; }
-  else state.volume = state._volBefore || 80;
-  save(); applyVolume();
 });
 applyVolume();
 const seekEl = $('seek');
