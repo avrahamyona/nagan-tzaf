@@ -1,4 +1,4 @@
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -21,20 +21,30 @@ let pipedBase = localStorage.getItem('nagan_piped') || null;
 
 async function pipedFetch(path, timeoutMs = 9000) {
   const hosts = pipedBase ? [pipedBase, ...PIPED_HOSTS.filter(h => h !== pipedBase)] : PIPED_HOSTS;
+  const deadline = Date.now() + Math.min(15000, Math.max(8000, timeoutMs * 1.5));
   let lastErr = null;
-  for (const base of hosts) {
+  for (let i = 0; i < hosts.length; i++) {
+    const base = hosts[i];
+    const remaining = deadline - Date.now();
+    if (remaining < 700) break;
+    const ctl = new AbortController();
+    const budget = Math.min(timeoutMs, Math.max(700, Math.ceil(remaining / (hosts.length - i))));
+    const to = setTimeout(() => ctl.abort(), budget);
     try {
-      const ctl = new AbortController();
-      const to = setTimeout(() => ctl.abort(), timeoutMs);
       const r = await fetch(base + path, { signal: ctl.signal });
-      clearTimeout(to);
       if (!r.ok) throw new Error('http ' + r.status);
       const j = await r.json();
       pipedBase = base; localStorage.setItem('nagan_piped', base);
       return j;
     } catch (e) { lastErr = e; }
+    finally { clearTimeout(to); }
   }
   throw lastErr || new Error('no piped host');
+}
+function within(promise, ms) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('search timeout')), ms); })])
+    .finally(() => clearTimeout(timer));
 }
 
 function chFromUrl(u) {
@@ -180,13 +190,13 @@ let state = {
   favArtists: {},     // chId -> {name, avatar}
   albums: {},         // plId -> {plId,title,thumb,sub}
   history: [],        // recent tracks, newest first (max 60)
-  recentSearches: [], // recent search terms, newest first (max 12)
   station: null,      // {seed, name} when radio autoplay is on
   resume: null,       // {pos, playing, vid} last known playback point
 };
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
   if (saved) state = Object.assign(state, saved);
+  delete state.recentSearches;
   // migrate v1
   const old = JSON.parse(localStorage.getItem('nagan_state_v1') || 'null');
   if (old && old.playlists && !saved) { state.playlists = old.playlists; state.queue = old.queue || []; state.qi = old.qi || 0; }
@@ -197,7 +207,7 @@ function save() {
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums, lessSuggestions: state.lessSuggestions,
-      history: state.history.slice(0, 60), resume: state.resume, recentSearches: (state.recentSearches || []).slice(0, 12),
+      history: state.history.slice(0, 60), resume: state.resume,
     }));
   } catch {}
 }
@@ -294,6 +304,36 @@ function armAutoResume(el) {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) onForeground(); });
   window.addEventListener('focus', onForeground);
   window.addEventListener('pageshow', onForeground);
+}
+const pendingSeek = new WeakMap();
+function seekWhenReady(el, seconds) {
+  const pos = Math.max(0, Number(seconds) || 0);
+  if (!pos) return;
+  const record = { pos, src: el.currentSrc || el.src };
+  pendingSeek.set(el, record);
+  const apply = () => {
+    if (pendingSeek.get(el) !== record || (el.currentSrc || el.src) !== record.src) return;
+    if (el.readyState < 1) return;
+    try {
+      el.currentTime = el.duration && Number.isFinite(el.duration) ? Math.min(pos, Math.max(0, el.duration - .25)) : pos;
+      if (Math.abs(el.currentTime - pos) < 1 || el.currentTime >= pos - 1) pendingSeek.delete(el);
+    } catch {}
+  };
+  apply();
+  if (pendingSeek.get(el) === record) {
+    el.addEventListener('loadedmetadata', apply, { once: true });
+    el.addEventListener('canplay', apply, { once: true });
+  }
+}
+function livePosition() {
+  const t = current();
+  if (!t) return 0;
+  const el = engine === 'clip' || engine === 'clip-pending' ? clipEl : audioEl;
+  if ((engine === 'audio' || engine === 'clip' || engine === 'clip-pending') && el.src)
+    return Math.max(el.currentTime || 0, pendingSeek.get(el)?.pos || 0);
+  if ((engine === 'yt' || engine === 'yt-pending') && ytReady && yt.getCurrentTime)
+    return yt.getCurrentTime() || 0;
+  return state.resume && state.resume.vid === t.id ? state.resume.pos || 0 : 0;
 }
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 (function verChip() {
@@ -432,7 +472,7 @@ function useClipEngine(t, startAt, autoplay) {
     if (!url) { clipUnavailable(); return; }
     engine = 'clip'; paintEngineBadge();
     clipEl.src = url;
-    if (startAt) { try { clipEl.currentTime = startAt; } catch {} }
+    seekWhenReady(clipEl, startAt);
     if (autoplay !== false) clipEl.play().catch(() => syncPlayUI(true));
   });
 }
@@ -443,7 +483,7 @@ function loadTrack(t, opts = {}) {
   clearTimeout(ytRetryTimer);
   window._streamDiag = '';
   lastCur = -1;
-  if (videoMode) { useClipEngine(t, opts.startAt, true); return; }
+  if (videoMode) { useClipEngine(t, opts.startAt, opts.autoplay !== false); return; }
   engine = 'audio'; paintEngineBadge(); playGen++;
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
@@ -464,8 +504,11 @@ function loadTrack(t, opts = {}) {
     const wasPlaying = engine === 'yt-pending' && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
     engine = 'audio'; paintEngineBadge();
     setAudioSrc(url);
-    if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
-    if (wasPlaying || hasGesture || opts.autoplay) audioEl.play().catch((e) => { noteAutoplayBlock(e); useYtEngine(t, opts.startAt); });
+    seekWhenReady(audioEl, opts.startAt);
+    if (wasPlaying || hasGesture || opts.autoplay) audioEl.play().catch((e) => {
+      if (noteAutoplayBlock(e)) return;
+      if (audioEl.dataset.vid === t.id && !videoMode) useYtEngine(t, Math.max(audioEl.currentTime || 0, opts.startAt || 0));
+    });
     else syncPlayUI(true);
   });
 }
@@ -755,8 +798,11 @@ function tintPlayer(img) {
     for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
     r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
     const mix = (c, t, w) => Math.round(c * w + t * (1 - w));
-    const r1 = mix(r, 244, .5), g1 = mix(g, 244, .5), b1 = mix(b, 246, .5);
-    document.documentElement.style.setProperty('--np-bg1', `rgb(${r1},${g1},${b1})`);
+    const r1 = mix(r, 49, .40), g1 = mix(g, 48, .40), b1 = mix(b, 50, .40);
+    document.documentElement.style.setProperty('--np-dark1', `rgb(${r1},${g1},${b1})`);
+    document.documentElement.style.setProperty('--np-dark2', `rgb(${mix(r, 29, .22)},${mix(g, 29, .22)},${mix(b, 31, .22)})`);
+    const r2 = mix(r, 244, .5), g2 = mix(g, 244, .5), b2 = mix(b, 246, .5);
+    document.documentElement.style.setProperty('--np-bg1', `rgb(${r2},${g2},${b2})`);
     document.documentElement.style.setProperty('--np-bg2', `rgb(${mix(r, 255, .25)},${mix(g, 255, .25)},${mix(b, 255, .25)})`);
   } catch {}
 }
@@ -1290,23 +1336,14 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   const toVideo = b.dataset.mode === 'video';
   if (toVideo === videoMode) return;
   const t = current();
-  let pos = 0, wasPlaying = false;
+  const pos = livePosition();
+  const wasPlaying = !!(t && (engine === 'clip' ? clipEl.src && !clipEl.paused
+    : engine === 'audio' ? audioEl.src && !audioEl.paused
+    : (engine === 'yt' || engine === 'yt-pending') && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING));
   if (t) {
-    if (videoMode) {
-      if (engine === 'clip') {
-        pos = clipEl.currentTime || 0;
-        wasPlaying = !clipEl.paused;
-        try { clipEl.pause(); } catch {}
-      } else {
-        pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
-        wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-        try { yt.stopVideo(); } catch {}
-      }
-    } else {
-      pos = audioEl.src ? (audioEl.currentTime || 0) : 0;
-      wasPlaying = !!(audioEl.src && !audioEl.paused);
-      try { audioEl.pause(); } catch {}
-    }
+    state.resume = { pos, playing: wasPlaying, vid: t.id };
+    save();
+    try { audioEl.pause(); clipEl.pause(); yt.stopVideo(); } catch {}
   }
   videoMode = toVideo;
   document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x === b));
@@ -1321,7 +1358,7 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
         if (audioEl.dataset.vid !== t.id || videoMode) return;
         if (!url) { useYtEngine(t, pos); return; }
         setAudioSrc(url);
-        try { audioEl.currentTime = pos; } catch {}
+        seekWhenReady(audioEl, pos);
         if (wasPlaying) audioEl.play().catch(() => syncPlayUI(true));
       });
     }
@@ -1481,7 +1518,7 @@ function sectionEl(title, bodyClass) {
   sec.className = 'asec';
   const head = document.createElement('div'); head.className = 'asec-head';
   const h = document.createElement('button'); h.className = 'asec-title'; h.type = 'button';
-  h.textContent = title;
+  h.textContent = title; h.disabled = true;
   const chev = document.createElement('span'); chev.className = 'asec-chev'; chev.setAttribute('aria-hidden', 'true'); chev.textContent = '‹';
   h.appendChild(chev);
   const body = document.createElement('div');
@@ -1601,6 +1638,7 @@ async function renderListen() {
   /* ---- 2. הושמעו לאחרונה ---- */
   if (h.length) {
     const { sec, body, heading } = sectionEl('הושמעו לאחרונה', 'hscroll');
+    heading.disabled = h.length <= 12;
     heading.addEventListener('click', () => sectionTracks('הושמעו לאחרונה', state.history));
     h.slice(0, 12).forEach(t => body.appendChild(sqCapCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
     box.appendChild(sec);
@@ -1619,6 +1657,7 @@ async function renderListen() {
     box.appendChild(sec);
     searchMusicCached(q).then(items => {
       allItems = items;
+      heading.disabled = items.length <= (limit || 12);
       body.innerHTML = '';
       items.slice(0, limit || 12).forEach(t => body.appendChild(cardFn(t, items)));
     }).catch(() => sec.remove());
@@ -1633,6 +1672,7 @@ async function renderListen() {
     box.appendChild(sec);
     searchMusicCached('שירים חדשים 2026 ישראל').then(items => {
       allItems = items;
+      heading.disabled = items.length <= 8;
       body.innerHTML = '';
       items.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(items, items.indexOf(t)) })));
     }).catch(() => sec.remove());
@@ -1976,45 +2016,6 @@ function openLibAlbums() {
 }
 
 /* ---------- חיפוש ---------- */
-const CATS = [
-  // [label, fallback gradient, search query, curated tile image video-id]
-  // images curated: male artists / groups / objects only (tznius)
-  ['מזרחית', 'linear-gradient(135deg,#fa2d48,#8f0e28)', 'מוזיקה מזרחית', 'nJ86tCHfEFU'],
-  ['ישראלי', 'linear-gradient(135deg,#0a84ff,#0b3d91)', 'מוזיקה ישראלית', 'syi0CsyWqeA'],
-  ['ערבית', 'linear-gradient(135deg,#30d158,#0f6e2c)', 'اغاني عربية', 'lo1PkLBtckA'],
-  ['מוזיקה עולמית', 'linear-gradient(135deg,#bf5af2,#5e2a84)', 'world music hits', 'xd1XwBSxEhI'],
-  ['פופ', 'linear-gradient(135deg,#ff9f0a,#c93400)', 'pop hits', '_GWKkqNoyEA'],
-  ['רגוע', 'linear-gradient(135deg,#64d2ff,#2a5a8f)', 'שירים רגועים', 'kO1gvHp52l0'],
-  ['חתונות ואירועים', 'linear-gradient(135deg,#ff6961,#8f1d1d)', 'שירי חתונה ישראלים', '4j9wTHbZv2Q'],
-  ['להיטי ילדים', 'linear-gradient(135deg,#ffd60a,#c78a00)', 'שירי ילדים', '8HGuL75SYhw'],
-];
-(function buildCats() {
-  const g = $('catGrid');
-  CATS.forEach(([name, color, q, imgId]) => {
-    const el = document.createElement('div');
-    el.className = 'cat';
-    el.style.background = color;
-    if (imgId) {
-      const im = document.createElement('img');
-      im.loading = 'lazy'; im.alt = '';
-      im.src = 'https://i.ytimg.com/vi/' + imgId + '/maxresdefault.jpg';
-      im.onerror = () => { im.onerror = null; im.src = 'https://i.ytimg.com/vi/' + imgId + '/hqdefault.jpg'; };
-      el.appendChild(im);
-      const scrim = document.createElement('div'); scrim.className = 'catscrim';
-      el.appendChild(scrim);
-    }
-    const sp = document.createElement('span');
-    sp.textContent = name;
-    el.appendChild(sp);
-    el.addEventListener('click', () => {
-      switchTab('search');
-      $('searchInput').value = q;
-      runSearch(q, 'songs');
-    });
-    g.appendChild(el);
-  });
-})();
-
 const PILLS = [['top', 'תוצאות מובילות'], ['songs', 'שירים'], ['artists', 'אמנים'], ['albums', 'אלבומים']];
 let curPill = 'top', lastQuery = '';
 (function buildPills() {
@@ -2034,78 +2035,14 @@ let curPill = 'top', lastQuery = '';
 })();
 
 
-/* ---------- search landing: recents + recently played + suggestions ---------- */
-function addRecentSearch(q) {
-  q = String(q || '').trim();
-  if (q.length < 2 || vidFromUrl(q)) return;
-  state.recentSearches = (state.recentSearches || []).filter(x => x !== q);
-  state.recentSearches.unshift(q);
-  if (state.recentSearches.length > 12) state.recentSearches.length = 12;
-  save();
-}
-function renderSearchHome() {
-  const rc = $('searchRecents'); rc.innerHTML = '';
-  const terms = state.recentSearches || [];
-  if (terms.length) {
-    const head = document.createElement('div'); head.className = 'srchsec';
-    head.innerHTML = '<h2 class="secttl">חיפושים אחרונים</h2>';
-    const clr = document.createElement('button'); clr.className = 'srchclear'; clr.textContent = 'נקה';
-    clr.addEventListener('click', () => { state.recentSearches = []; save(); renderSearchHome(); });
-    head.appendChild(clr); rc.appendChild(head);
-    terms.slice(0, 8).forEach(term => {
-      const r = document.createElement('button'); r.className = 'srchrow';
-      r.innerHTML = '<svg><use href="#i-clock"/></svg><span class="grow"></span><span class="rx"><svg><use href="#i-x"/></svg></span>';
-      r.querySelector('.grow').textContent = term;
-      r.addEventListener('click', () => { input.value = term; runSearch(term, curPill); });
-      r.querySelector('.rx').addEventListener('click', e => {
-        e.stopPropagation();
-        state.recentSearches = state.recentSearches.filter(x => x !== term); save(); renderSearchHome();
-      });
-      rc.appendChild(r);
-    });
-  }
-  const rp = $('searchRecentPlays'); rp.innerHTML = '';
-  const h = (state.history || []).slice(0, 10);
-  if (h.length) {
-    const { sec, body } = sectionEl('הושמע לאחרונה', 'hscroll');
-    h.forEach((t, i) => body.appendChild(sqCard(t, () => playQueue(h, i), t.artist)));
-    rp.appendChild(sec);
-  }
-}
-let suggTimer = null, suggSeq = 0;
-function hideSugg() { $('suggBox').classList.add('hidden'); }
-async function showSuggestions(q) {
-  const seq = ++suggSeq;
-  const box = $('suggBox');
-  const local = (state.recentSearches || []).filter(x => x.includes(q)).slice(0, 3);
-  const paint = items => {
-    if (seq !== suggSeq) return;
-    box.innerHTML = '';
-    if (!items.length) { box.classList.add('hidden'); return; }
-    const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
-    items.forEach(s => {
-      const b = document.createElement('button'); b.className = 'suggrow';
-      b.innerHTML = '<svg><use href="#i-search"/></svg><span>' + escHtml(s).replace(rx, '<b>$1</b>') + '</span>';
-      b.addEventListener('click', () => { input.value = s; hideSugg(); runSearch(s, curPill); });
-      box.appendChild(b);
-    });
-    box.classList.remove('hidden');
-  };
-  paint(local);
-  try {
-    const arr = await pipedFetch('/suggestions?query=' + encodeURIComponent(q), 5000);
-    if (seq !== suggSeq) return;
-    const merged = [...local];
-    (Array.isArray(arr) ? arr : []).forEach(s => { if (merged.length < 8 && !merged.includes(s)) merged.push(s); });
-    paint(merged);
-  } catch {}
-}
+/* Search stays blank until the user submits a query; no history or suggestions. */
+function renderSearchHome() { $('searchHome').replaceChildren(); }
+function hideSugg() { $('suggBox').replaceChildren(); $('suggBox').classList.add('hidden'); }
 
-let searchTimer = null, searchSeq = 0;
+let searchSeq = 0;
 const input = $('searchInput');
 input.addEventListener('input', () => {
   $('clearSearch').classList.toggle('hidden', !input.value);
-  clearTimeout(searchTimer); clearTimeout(suggTimer);
   hideSugg();
   if (!input.value.trim()) {
     $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden');
@@ -2123,14 +2060,13 @@ $('clearSearch').addEventListener('click', () => { input.value = ''; input.dispa
 async function runSearch(q, pill) {
   if (!q) return;
   lastQuery = q;
-  addRecentSearch(q);
   switchTab('search');
   $('searchHome').classList.add('hidden');
   $('searchRes').classList.remove('hidden');
   const vid = vidFromUrl(q);
   const seq = ++searchSeq;
   const box = $('resBody');
-  box.innerHTML = '<div class="empty"><p>מחפש...</p></div>';
+  box.innerHTML = '<div class="empty js-loading"><p>מחפש...</p></div>';
   if (vid) {
     const t = { id: vid, title: 'שיר מיוטיוב', artist: '', dur: 0 };
     box.innerHTML = '';
@@ -2140,7 +2076,7 @@ async function runSearch(q, pill) {
   }
   try {
     if (pill === 'artists') {
-      const chans = await searchChannels(q);
+      const chans = await within(searchChannels(q), 17000);
       if (seq !== searchSeq) return;
       hideNetNote();
       box.innerHTML = chans.length ? '' : '<div class="empty"><p>לא נמצאו אמנים.</p></div>';
@@ -2148,7 +2084,7 @@ async function runSearch(q, pill) {
       return;
     }
     if (pill === 'albums') {
-      const albs = await searchPlaylists(q, 'music_albums');
+      const albs = await within(searchPlaylists(q, 'music_albums'), 17000);
       if (seq !== searchSeq) return;
       hideNetNote();
       box.innerHTML = '';
@@ -2160,17 +2096,21 @@ async function runSearch(q, pill) {
       return;
     }
     // top / songs — incremental: paint as each source lands (songs first), don't gate on slow ones
-    const jobs = { songs: searchMusicCached(q), lyrics: searchLyrics(q) };
-    if (pill === 'top') { jobs.artists = searchChannels(q); jobs.albums = searchPlaylists(q, 'music_albums'); }
+    const jobs = { songs: within(searchMusicCached(q), 17000), lyrics: within(searchLyrics(q), 17000) };
+    if (pill === 'top') { jobs.artists = within(searchChannels(q), 17000); jobs.albums = within(searchPlaylists(q, 'music_albums'), 17000); }
     const res = {};
-    let songsDone = false, lyricsDone = false;
+    let songsDone = false, lyricsDone = false, searchFailed = false;
+    const clearLoading = () => { if (box.querySelector('.js-loading')) box.replaceChildren(); };
     const done = () => {
       if (seq !== searchSeq || !songsDone || !lyricsDone) return;
+      clearLoading();
+      if (searchFailed && !box.children.length) { box.innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע. נסה שוב מאוחר יותר.</p></div>'; return; }
       if (!box.children.length) box.innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>';
     };
     Object.entries(jobs).forEach(([k, p]) => Promise.resolve(p).then(r => {
       if (seq !== searchSeq) return;
       res[k] = r || [];
+      clearLoading();
       if (k === 'songs') { songsDone = true; paintSearchSongs(); }
       if (k === 'lyrics') { lyricsDone = true; paintSearchLyrics(); }
       if (k === 'artists' && pill === 'top' && res.artists.length && !$('resArtistHit')) {
@@ -2178,7 +2118,7 @@ async function runSearch(q, pill) {
       }
       if (k === 'albums') paintSearchAlbums();
       hideNetNote(); done();
-    }).catch(() => { if (k === 'songs') songsDone = true; if (k === 'lyrics') lyricsDone = true; done(); }));
+    }).catch(() => { if (k === 'songs') { songsDone = true; searchFailed = true; } if (k === 'lyrics') lyricsDone = true; done(); }));
     const paintSearchSongs = () => {
       if (seq !== searchSeq) return;
       box.querySelectorAll('.js-songs').forEach(x => x.remove());
@@ -2226,43 +2166,6 @@ async function runSearch(q, pill) {
       box.appendChild(wrap);
     };
     return;
-    const songs = res.songs || [];
-    if (pill === 'top' && res.artists && res.artists.length) box.appendChild(artistHit(res.artists[0]));
-    if (songs.length) {
-      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'שירים';
-      box.appendChild(h);
-      songs.slice(0, 20).forEach((t, i) => box.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
-    }
-    const lyr = (res.lyrics || []).filter(x => x.line);
-    if (lyr.length) {
-      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'נמצא במילים';
-      box.appendChild(h);
-      lyr.slice(0, 5).forEach(x => {
-        const row = document.createElement('button');
-        row.className = 'row lyrrow';
-        row.innerHTML = '<div class="lyrnote"><svg style="width:20px;height:20px"><use href="#i-lyrics"/></svg></div><div class="meta"><div class="t"></div><div class="a"></div><div class="lyrsnip dim"></div></div>';
-        row.querySelector('.t').textContent = x.title;
-        row.querySelector('.a').textContent = x.artist;
-        renderLyricSnippet(row.querySelector('.lyrsnip'), x.line, q);
-        row.addEventListener('click', async () => {
-          try {
-            const songs = await searchMusic(x.artist + ' ' + x.title);
-            if (songs.length) playQueue(songs, 0);
-            else toast('לא נמצאה התאמה ביוטיוב');
-          } catch { toast('החיפוש לא זמין כרגע'); }
-        });
-        box.appendChild(row);
-      });
-    }
-    if (pill === 'top' && res.albums && res.albums.length) {
-      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'אלבומים';
-      box.appendChild(h);
-      const wrap = document.createElement('div');
-      wrap.className = 'hscroll';
-      res.albums.slice(0, 10).forEach(a => wrap.appendChild(albumCardEl(a)));
-      box.appendChild(wrap);
-    }
-    if (!box.children.length) box.innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>';
   } catch (e) {
     if (seq !== searchSeq) return;
     box.innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע.</p><p class="dim">אפשר תמיד להדביק כאן קישור של שיר מיוטיוב ולנגן ישירות.</p></div>';
@@ -2409,8 +2312,11 @@ function captureResume() {
   const t = current();
   if (!t) return;
   let c = 0, paused = true;
-  if (activeAudio()) { if (!M().src) return; c = M().currentTime || 0; paused = M().paused; }
+  if (activeAudio()) { if (!M().src) return; c = livePosition(); paused = M().paused; }
+  else if (engine === 'clip-pending') { c = livePosition(); paused = !(state.resume && state.resume.playing); }
   else { if (!ytReady || !yt.getCurrentTime) return; c = yt.getCurrentTime() || 0; paused = yt.getPlayerState() !== YT.PlayerState.PLAYING; }
+  // A failed media reload must not overwrite a later saved position with zero.
+  if (c < 1 && state.resume && state.resume.vid === t.id && state.resume.pos > 1) c = state.resume.pos;
   state.resume = { pos: c, playing: !paused, vid: t.id };
 }
 function saveResume() { captureResume(); save(); }
@@ -2429,7 +2335,7 @@ document.addEventListener('visibilitychange', () => {
         engine = 'audio'; playGen++; paintEngineBadge();
         audioEl.dataset.vid = t.id;
         setAudioSrc(url);
-        try { audioEl.currentTime = pos; } catch {}
+        seekWhenReady(audioEl, pos);
         audioEl.play().catch(() => {});
       });
     }
@@ -2440,17 +2346,18 @@ document.addEventListener('visibilitychange', () => {
   // still playing (iOS let the audio run in the background)? just repaint.
   const stillPlaying = activeAudio() ? (M().src && !M().paused)
     : (ytReady && yt.getPlayerState && yt.getPlayerState() === YT.PlayerState.PLAYING);
-  if (stillPlaying) { syncPlayUI(false); paintNow(); return; }
+  if (stillPlaying) { captureResume(); save(); syncPlayUI(false); paintNow(); return; }
   const r = state.resume;
   if (r && r.playing && r.vid === t.id) {
     // playback was suspended: pick up exactly where it stopped
-    loadTrack(t, { startAt: Math.max(0, r.pos), autoplay: true });
+    loadTrack(t, { startAt: Math.max(livePosition(), r.pos), autoplay: true });
     toast('ממשיכים מאיפה שעצרנו');
   } else {
     syncPlayUI(true);
     paintNow();
   }
 });
+setInterval(() => { if (current() && !document.hidden) saveResume(); }, 5000);
 window.addEventListener('pagehide', saveResume);
 window.addEventListener('freeze', saveResume);
 
