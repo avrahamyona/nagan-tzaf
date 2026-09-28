@@ -524,3 +524,21 @@ body.vid #ytwrap { display: block; }
   .lyrview.open{transform:translateX(0)}
   .lyrbody{padding-bottom:30vh}
 }
+
+/* ============ חיפוש: הצעות + אחרונים ============ */
+.suggbox{margin:2px 4px 10px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+.suggrow{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:0;background:none;font-size:15px;text-align:right;cursor:pointer;color:#141419}
+.suggrow:active{background:rgba(0,0,0,.05)}
+.suggrow svg{width:17px;height:17px;flex:none;opacity:.5}
+.suggrow b{color:#fa2d48;font-weight:600}
+.srchsec{display:flex;align-items:center;justify-content:space-between;margin:18px 2px 4px}
+.srchsec h2{margin:0}
+.srchclear{border:0;background:none;color:#fa2d48;font-size:14px;cursor:pointer;padding:4px}
+.srchrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 2px;border:0;background:none;font-size:15px;text-align:right;cursor:pointer;color:#141419;border-bottom:.5px solid rgba(0,0,0,.07)}
+.srchrow svg{width:16px;height:16px;flex:none;opacity:.45}
+.srchrow .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srchrow .rx{opacity:.4;padding:4px}
+.srchrow .rx svg{width:13px;height:13px}
+.lyrsnip b{color:#fa2d48;font-weight:600}
+.qsect{margin:14px 4px 6px;font-size:14px;font-weight:700;color:rgba(20,20,25,.55)}
+.row.qhist{opacity:.55}

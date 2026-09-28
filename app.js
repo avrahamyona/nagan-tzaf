@@ -136,6 +136,7 @@ let state = {
   favArtists: {},     // chId -> {name, avatar}
   albums: {},         // plId -> {plId,title,thumb,sub}
   history: [],        // recent tracks, newest first (max 40)
+  recentSearches: [], // recent search terms, newest first (max 12)
   station: null,      // {seed, name} when radio autoplay is on
   resume: null,       // {pos, playing, vid} last known playback point
 };
@@ -152,7 +153,7 @@ function save() {
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums,
-      history: state.history.slice(0, 40), resume: state.resume,
+      history: state.history.slice(0, 40), resume: state.resume, recentSearches: (state.recentSearches || []).slice(0, 12),
     }));
   } catch {}
 }
@@ -245,8 +246,9 @@ function armAutoResume(el) {
 }
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
+let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v29b';
+const APP_VERSION = 'v30';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -353,6 +355,7 @@ function useClipEngine(t, startAt, autoplay) {
 
 function loadTrack(t, opts = {}) {
   if (!t) return;
+  restoreAttempt = !!(opts.startAt && opts.autoplay);
   clearTimeout(ytRetryTimer);
   window._streamDiag = '';
   lastCur = -1;
@@ -393,7 +396,7 @@ clipEl.addEventListener('error', () => {
 audioEl.addEventListener('ended', () => advance(1, true));
 armAutoResume(audioEl);
 armAutoResume(clipEl);
-audioEl.addEventListener('play', () => syncPlayUI(false));
+audioEl.addEventListener('play', () => { restoreAttempt = false; syncPlayUI(false); });
 audioEl.addEventListener('pause', () => syncPlayUI(true));
 audioEl.addEventListener('error', () => {
   if (audioEl.error) window._streamDiag = (window._streamDiag || '') + ' elerr:' + audioEl.error.code;
@@ -414,17 +417,39 @@ function onPlayerState(st) {
     try { yt.stopVideo(); } catch {}
     return;
   }
-  if (st === YT.PlayerState.PLAYING) { syncPlayUI(false); }
+  if (st === YT.PlayerState.PLAYING) { restoreAttempt = false; syncPlayUI(false); }
   else if (st === YT.PlayerState.PAUSED) { syncPlayUI(true); }
   else if (st === YT.PlayerState.ENDED) { if (engine === 'yt') advance(1, true); }
 }
 let errGuard = 0;
 function onTrackError() {
   const t = current();
+  if (restoreAttempt) {
+    restoreAttempt = false;
+    toast(`לא הצלחתי להמשיך את "${t ? t.title : ''}" כרגע - נסה שוב בעוד רגע`);
+    syncPlayUI(true);
+    return;
+  }
   toast(`השיר "${t ? t.title : ''}" לא זמין לנגינה מוטמעת - מדלג`);
   errGuard++;
   if (errGuard < 8) setTimeout(() => advance(1, true), 700);
   setTimeout(() => { errGuard = 0; }, 15000);
+}
+
+
+const escHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/* Apple Music style lyric-match snippet: match words highlighted, a word or two of context around them */
+function renderLyricSnippet(el, line, q) {
+  const words = String(line || '').split(/\s+/);
+  const qws = String(q || '').toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  const isQ = w => qws.some(x => w.toLowerCase().includes(x));
+  let first = -1, last = -1;
+  words.forEach((w, i) => { if (isQ(w)) { if (first < 0) first = i; last = i; } });
+  if (first < 0) { el.textContent = '\u201C' + line + '\u201D'; return; }
+  const a = Math.max(0, first - 2), b = Math.min(words.length, last + 3);
+  el.innerHTML = '\u201C' + (a > 0 ? '\u2026 ' : '')
+    + words.slice(a, b).map(w => isQ(w) ? '<b>' + escHtml(w) + '</b>' : escHtml(w)).join(' ')
+    + (b < words.length ? ' \u2026' : '') + '\u201D';
 }
 
 /* ---------- queue ---------- */
@@ -487,13 +512,13 @@ function togglePlay() {
   const t = current();
   if (!t) return;
   if (activeAudio()) {
-    if (!M().src || M().dataset.vid !== t.id) { loadTrack(t, { startAt: takeRestorePos() }); return; }
+    if (!M().src || M().dataset.vid !== t.id) { loadTrack(t, { startAt: takeRestorePos(), autoplay: true }); return; }
     if (M().paused) { userPaused = false; M().play().catch(() => {}); } else { userPaused = true; M().pause(); }
     return;
   }
   if (!ytReady) return;
   const rp = takeRestorePos();
-  if (rp && yt.getDuration && !yt.getCurrentTime()) { yt.loadVideoById({ videoId: t.id, startSeconds: rp }); return; }
+  if (rp) { loadTrack(t, { startAt: rp, autoplay: true }); return; }
   const st = yt.getPlayerState();
   if (st === YT.PlayerState.PLAYING) yt.pauseVideo(); else yt.playVideo();
 }
@@ -679,7 +704,8 @@ function artistHit(c) {
   const row = document.createElement('div');
   row.className = 'artisthit';
   row.innerHTML = `<img loading="lazy" src="${c.avatar || ''}" alt=""><div class="meta"><div class="t"></div><div class="a"></div></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
-  row.querySelector('.t').textContent = c.name.replace(/ - Topic$/i, '') + (c.verified ? ' ✔︎' : '');
+  row.querySelector('.t').textContent = c.name.replace(/ - Topic$/i, '');
+  if (c.verified) row.querySelector('.t').insertAdjacentHTML('beforeend', ' <svg style="width:13px;height:13px;vertical-align:-1px;color:#fa2d48"><use href="#i-check"/></svg>');
   row.querySelector('.a').textContent = 'אמן';
   row.addEventListener('click', () => openArtist(c.chId, c.name, c.avatar));
   return row;
@@ -737,7 +763,7 @@ function openAddSheet(t) {
     row.addEventListener('click', () => {
       const exists = (state.playlists[name] || []).some(x => x.id === t.id);
       if (exists) toast('השיר כבר ברשימה הזאת');
-      else { state.playlists[name].push(t); save(); toast(`נוסף ל"${name}" ✔`); }
+      else { state.playlists[name].push(t); save(); toast(`נוסף ל"${name}"`); }
       closeAllSheets();
     });
     box.appendChild(row);
@@ -749,16 +775,33 @@ $('addNew').addEventListener('click', () => {
   if (!name) return;
   if (!state.playlists[name]) state.playlists[name] = [];
   state.playlists[name].push(addTarget);
-  save(); closeAllSheets(); toast(`נוסף ל"${name}" ✔`);
+  save(); closeAllSheets(); toast(`נוסף ל"${name}"`);
 });
 
-/* queue sheet */
+/* queue sheet: history + now playing + up next (Apple Music "בא בתור") */
+const qHead = txt => { const h = document.createElement('div'); h.className = 'qsect'; h.textContent = txt; return h; };
 $('cQueue').addEventListener('click', () => {
   const box = $('queueList'); box.innerHTML = '';
-  const up = state.queue.slice(state.qi);
-  if (!up.length) { box.innerHTML = '<div class="empty"><p>התור ריק</p></div>'; }
+  const cur = current();
+  const hist = state.history.filter(x => !cur || x.id !== cur.id).slice(0, 10);
+  const up = state.queue.slice(state.qi + 1);
+  if (hist.length) {
+    box.appendChild(qHead('הושמע'));
+    hist.slice().reverse().forEach(t => {
+      const r = trackRow(t, { onPlay: () => { playQueue([t, cur, ...up].filter(Boolean), 0); closeSheet('queueSheet'); } });
+      r.classList.add('qhist');
+      box.appendChild(r);
+    });
+  }
+  if (cur) {
+    box.appendChild(qHead('מושמע עכשיו'));
+    box.appendChild(trackRow(cur, { onPlay: () => closeSheet('queueSheet') }));
+  }
+  box.appendChild(qHead('הבא בתור'));
+  if (!up.length && !cur) { box.innerHTML = '<div class="empty"><p>התור ריק</p></div>'; }
+  else if (!up.length) { const e = document.createElement('div'); e.className = 'empty'; e.innerHTML = '<p>אין עוד שירים בתור</p>'; box.appendChild(e); }
   up.forEach((t, i) => box.appendChild(trackRow(t, {
-    onPlay: () => { state.qi = state.qi + i; pushHistory(t); loadTrack(t); paintNow(); save(); closeSheet('queueSheet'); },
+    onPlay: () => { state.qi = state.qi + 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); closeSheet('queueSheet'); },
   })));
   openSheet('queueSheet');
 });
@@ -1050,6 +1093,7 @@ function switchTab(name) {
   if (name === 'listen') renderListen();
   if (name === 'browse') renderBrowse();
   if (name === 'radio') renderRadio();
+  if (name === 'search') renderSearchHome();
 }
 document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 window.addEventListener('resize', moveTabGlass);
@@ -1112,7 +1156,7 @@ function stationCard(name, avatar, onTap) {
   el.innerHTML = (avatar
     ? `<img loading="lazy" src="${avatar}" alt="">`
     : `<div class="stph" style="background:${g}"><span></span></div>`) + `<div class="ct"></div><div class="cs"></div>`;
-  if (!avatar) el.querySelector('.stph span').textContent = name.trim()[0] || '♪';
+  if (!avatar) el.querySelector('.stph span').textContent = name.trim()[0] || '';
   el.querySelector('.ct').textContent = name;
   el.querySelector('.cs').textContent = 'התחנה של ' + name;
   el.addEventListener('click', onTap);
@@ -1135,7 +1179,7 @@ async function renderListen() {
     h.slice(0, 12).forEach(t => b2.appendChild(sqCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
     box.appendChild(s2);
   } else {
-    box.innerHTML = '<div class="empty"><div class="big">🎵</div><h2>ברוכים הבאים</h2><p>נגן משהו ונתחיל להכיר את הטעם שלך.</p></div>';
+    box.innerHTML = '<div class="empty"><div class="big"><svg style="width:56px;height:56px;opacity:.35"><use href="#i-note"/></svg></div><h2>ברוכים הבאים</h2><p>נגן משהו ונתחיל להכיר את הטעם שלך.</p></div>';
   }
   // made for you: derived from history artists, else Israeli defaults
   const topArtists = [...new Set(h.map(t => t.artist).filter(Boolean))].slice(0, 4);
@@ -1245,7 +1289,7 @@ function renderLibrary() {
     rows.appendChild(el);
   };
   mkRow('שירים אהובים', 'i-star-fill', favList().length, () => openLocalPlaylist('שירים אהובים'));
-  mkRow('הושמע לאחרונה', 'i-queue', state.history.length, () => openRecent());
+  mkRow('הושמע לאחרונה', 'i-clock', state.history.length, () => openRecent());
   mkRow('אמנים', 'i-tab-listen', Object.keys(state.favArtists).length, () => openLibArtists());
   mkRow('אלבומים', 'i-note', Object.keys(state.albums).length, () => openLibAlbums());
   const pls = $('libPls');
@@ -1438,21 +1482,91 @@ let curPill = 'top', lastQuery = '';
   });
 })();
 
+
+/* ---------- search landing: recents + recently played + suggestions ---------- */
+function addRecentSearch(q) {
+  q = String(q || '').trim();
+  if (q.length < 2 || vidFromUrl(q)) return;
+  state.recentSearches = (state.recentSearches || []).filter(x => x !== q);
+  state.recentSearches.unshift(q);
+  if (state.recentSearches.length > 12) state.recentSearches.length = 12;
+  save();
+}
+function renderSearchHome() {
+  const rc = $('searchRecents'); rc.innerHTML = '';
+  const terms = state.recentSearches || [];
+  if (terms.length) {
+    const head = document.createElement('div'); head.className = 'srchsec';
+    head.innerHTML = '<h2 class="secttl">חיפושים אחרונים</h2>';
+    const clr = document.createElement('button'); clr.className = 'srchclear'; clr.textContent = 'נקה';
+    clr.addEventListener('click', () => { state.recentSearches = []; save(); renderSearchHome(); });
+    head.appendChild(clr); rc.appendChild(head);
+    terms.slice(0, 8).forEach(term => {
+      const r = document.createElement('button'); r.className = 'srchrow';
+      r.innerHTML = '<svg><use href="#i-clock"/></svg><span class="grow"></span><span class="rx"><svg><use href="#i-x"/></svg></span>';
+      r.querySelector('.grow').textContent = term;
+      r.addEventListener('click', () => { input.value = term; runSearch(term, curPill); });
+      r.querySelector('.rx').addEventListener('click', e => {
+        e.stopPropagation();
+        state.recentSearches = state.recentSearches.filter(x => x !== term); save(); renderSearchHome();
+      });
+      rc.appendChild(r);
+    });
+  }
+  const rp = $('searchRecentPlays'); rp.innerHTML = '';
+  const h = (state.history || []).slice(0, 10);
+  if (h.length) {
+    const { sec, body } = sectionEl('הושמע לאחרונה', 'hscroll');
+    h.forEach((t, i) => body.appendChild(sqCard(t, () => playQueue(h, i), t.artist)));
+    rp.appendChild(sec);
+  }
+}
+let suggTimer = null, suggSeq = 0;
+function hideSugg() { $('suggBox').classList.add('hidden'); }
+async function showSuggestions(q) {
+  const seq = ++suggSeq;
+  const box = $('suggBox');
+  const local = (state.recentSearches || []).filter(x => x.includes(q)).slice(0, 3);
+  const paint = items => {
+    if (seq !== suggSeq) return;
+    box.innerHTML = '';
+    if (!items.length) { box.classList.add('hidden'); return; }
+    const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+    items.forEach(s => {
+      const b = document.createElement('button'); b.className = 'suggrow';
+      b.innerHTML = '<svg><use href="#i-search"/></svg><span>' + escHtml(s).replace(rx, '<b>$1</b>') + '</span>';
+      b.addEventListener('click', () => { input.value = s; hideSugg(); runSearch(s, curPill); });
+      box.appendChild(b);
+    });
+    box.classList.remove('hidden');
+  };
+  paint(local);
+  try {
+    const arr = await pipedFetch('/suggestions?query=' + encodeURIComponent(q), 5000);
+    if (seq !== suggSeq) return;
+    const merged = [...local];
+    (Array.isArray(arr) ? arr : []).forEach(s => { if (merged.length < 8 && !merged.includes(s)) merged.push(s); });
+    paint(merged);
+  } catch {}
+}
+
 let searchTimer = null, searchSeq = 0;
 const input = $('searchInput');
 input.addEventListener('input', () => {
   $('clearSearch').classList.toggle('hidden', !input.value);
-  clearTimeout(searchTimer);
+  clearTimeout(searchTimer); clearTimeout(suggTimer);
   const q = input.value.trim();
-  if (!q) { $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden'); hideNetNote(); return; }
-  searchTimer = setTimeout(() => runSearch(q, curPill), 450);
+  if (!q) { $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden'); hideNetNote(); hideSugg(); renderSearchHome(); return; }
+  suggTimer = setTimeout(() => showSuggestions(q), 180);
+  searchTimer = setTimeout(() => { hideSugg(); runSearch(q, curPill); }, 450);
 });
-input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(input.value.trim(), curPill); } });
+input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); clearTimeout(suggTimer); hideSugg(); runSearch(input.value.trim(), curPill); } });
 $('clearSearch').addEventListener('click', () => { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); });
 
 async function runSearch(q, pill) {
   if (!q) return;
   lastQuery = q;
+  addRecentSearch(q);
   switchTab('search');
   $('searchHome').classList.add('hidden');
   $('searchRes').classList.remove('hidden');
@@ -1510,10 +1624,10 @@ async function runSearch(q, pill) {
       lyr.slice(0, 5).forEach(x => {
         const row = document.createElement('button');
         row.className = 'row lyrrow';
-        row.innerHTML = '<div class="lyrnote">\u266A</div><div class="meta"><div class="t"></div><div class="a"></div><div class="lyrsnip dim"></div></div>';
+        row.innerHTML = '<div class="lyrnote"><svg style="width:20px;height:20px"><use href="#i-lyrics"/></svg></div><div class="meta"><div class="t"></div><div class="a"></div><div class="lyrsnip dim"></div></div>';
         row.querySelector('.t').textContent = x.title;
         row.querySelector('.a').textContent = x.artist;
-        row.querySelector('.lyrsnip').textContent = '\u201C' + x.line + '\u201D';
+        renderLyricSnippet(row.querySelector('.lyrsnip'), x.line, q);
         row.addEventListener('click', async () => {
           try {
             const songs = await searchMusic(x.artist + ' ' + x.title);
