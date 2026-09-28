@@ -167,7 +167,7 @@ const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 function paintEngineBadge() {
   const b = document.getElementById('engineBadge');
   if (!b) return;
@@ -355,19 +355,60 @@ function togglePlay() {
 }
 
 /* ---------- media session ---------- */
+const artCache = {}; // vid -> Promise<artwork[]|null>
+function squareArtwork(vid) {
+  if (artCache[vid]) return artCache[vid];
+  artCache[vid] = (async () => {
+    for (const q of ['maxres', 'sd', 'hq']) {
+      try {
+        const img = await new Promise((res, rej) => {
+          const i = new Image();
+          i.crossOrigin = 'anonymous';
+          i.onload = () => res(i);
+          i.onerror = rej;
+          i.src = thumb(vid, q);
+        });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) continue;
+        if (q === 'maxres' && w < 400) continue; // placeholder image, try next
+        const s = Math.min(w, h);
+        const c = document.createElement('canvas');
+        c.width = c.height = 512;
+        c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, 512, 512);
+        const d512 = c.toDataURL('image/jpeg', 0.88);
+        c.width = c.height = 256;
+        c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, 256, 256);
+        const d256 = c.toDataURL('image/jpeg', 0.85);
+        return [
+          { src: d512, sizes: '512x512', type: 'image/jpeg' },
+          { src: d256, sizes: '256x256', type: 'image/jpeg' },
+        ];
+      } catch {}
+    }
+    return null;
+  })();
+  return artCache[vid];
+}
 function updateMediaSession() {
   if (!('mediaSession' in navigator)) return;
   const t = current();
   if (!t) return;
-  try {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title, artist: t.artist, album: 'Avi Music',
-      artwork: [
-        { src: thumb(t.id, 'mq'), sizes: '320x180', type: 'image/jpeg' },
-        { src: thumb(t.id, 'hq'), sizes: '480x360', type: 'image/jpeg' },
-      ],
-    });
-  } catch {}
+  const setMeta = artwork => {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title, artist: t.artist, album: 'Avi Music', artwork,
+      });
+    } catch {}
+  };
+  // Instant metadata with the plain thumbs; upgraded to full-bleed square
+  // artwork as soon as the cropped version is ready (iOS lock screen takes it).
+  setMeta([
+    { src: thumb(t.id, 'mq'), sizes: '320x180', type: 'image/jpeg' },
+    { src: thumb(t.id, 'hq'), sizes: '480x360', type: 'image/jpeg' },
+  ]);
+  squareArtwork(t.id).then(art => {
+    if (art && current() && current().id === t.id) setMeta(art);
+  });
 }
 try {
   if ('mediaSession' in navigator) {
