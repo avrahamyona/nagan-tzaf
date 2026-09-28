@@ -475,7 +475,7 @@ function artistHit(c) {
   const row = document.createElement('div');
   row.className = 'artisthit';
   row.innerHTML = `<img loading="lazy" src="${c.avatar || ''}" alt=""><div class="meta"><div class="t"></div><div class="a"></div></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
-  row.querySelector('.t').textContent = c.name + (c.verified ? ' ✔︎' : '');
+  row.querySelector('.t').textContent = c.name.replace(/ - Topic$/i, '') + (c.verified ? ' ✔︎' : '');
   row.querySelector('.a').textContent = 'אמן';
   row.addEventListener('click', () => openArtist(c.chId, c.name, c.avatar));
   return row;
@@ -1152,10 +1152,16 @@ async function openArtist(chId, name, avatar) {
   try { channel = await pipedFetch('/channel/' + chId, 8000); } catch {}
   if (seq !== aSeq) return;
   if (channel && !channel.error) {
-    if (channel.name) { $('aName').textContent = channel.name; aCur.name = channel.name; }
+    if (channel.name) { const dn = channel.name.replace(/ - Topic$/i, ''); $('aName').textContent = dn; aCur.name = dn; }
     if (channel.avatarUrl) aCur.avatar = channel.avatarUrl;
     const bn = channel.bannerUrl || channel.avatarUrl;
     if (bn) $('aBanner').style.backgroundImage = `url("${bn}")`;
+    else if (!avatar) {
+      try {
+        const cs = await searchChannels(aCur.name || name);
+        if (cs.length && cs[0].avatar) { aCur.avatar = cs[0].avatar; $('aBanner').style.backgroundImage = `url("${cs[0].avatar}")`; }
+      } catch {}
+    }
     songs = (channel.relatedStreams || [])
       .filter(s => s.url && s.type === 'stream')
       .map(mapStream).filter(t => t.id).slice(0, 10);

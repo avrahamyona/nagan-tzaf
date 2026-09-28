@@ -397,3 +397,5 @@ body.vid #ytwrap { display: block; }
 #cPrev svg { transform: scaleX(-1); }
 .row .chev, .sechead .more svg, .artisthit svg.chev, .librow .chev { transform: none; }
 .pageback svg { transform: scaleX(-1); }
+.abanner { filter: saturate(1.1); }
+.ahero.noimg .abanner { background: linear-gradient(160deg,#3a3a3e,#17171a); }
