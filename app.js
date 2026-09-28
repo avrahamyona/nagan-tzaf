@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v31b';
+const APP_VERSION = 'v32';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1826,7 +1826,26 @@ function captureResume() {
 }
 function saveResume() { captureResume(); save(); }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { saveResume(); return; }
+  if (document.visibilityState === 'hidden') {
+    saveResume();
+    // Chrome on Windows marks a fully COVERED window as hidden and pauses video
+    // elements in it - which freezes the YT embed engine. Move playback to the
+    // plain audio element (keeps playing while hidden) before that happens.
+    if (engine === 'yt' && !videoMode && ytReady && yt.getPlayerState && yt.getPlayerState() === YT.PlayerState.PLAYING) {
+      const t = current();
+      if (t) resolveAudioUrl(t.id).then(url => {
+        if (!url || engine !== 'yt' || !current() || current().id !== t.id) return;
+        const pos = yt.getCurrentTime ? yt.getCurrentTime() : 0;
+        try { yt.stopVideo(); } catch {}
+        engine = 'audio'; playGen++; paintEngineBadge();
+        audioEl.dataset.vid = t.id;
+        audioEl.src = url;
+        try { audioEl.currentTime = pos; } catch {}
+        audioEl.play().catch(() => {});
+      });
+    }
+    return;
+  }
   const t = current();
   if (!t) return;
   // still playing (iOS let the audio run in the background)? just repaint.
