@@ -1,4 +1,4 @@
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -196,7 +196,7 @@ function save() {
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums,
-      history: state.history.slice(0, 40), resume: state.resume, recentSearches: (state.recentSearches || []).slice(0, 12),
+      history: state.history.slice(0, 60), resume: state.resume, recentSearches: (state.recentSearches || []).slice(0, 12),
     }));
   } catch {}
 }
@@ -204,7 +204,7 @@ function pushHistory(t) {
   if (!t || !t.id) return;
   state.history = state.history.filter(x => x.id !== t.id);
   state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch });
-  if (state.history.length > 40) state.history.length = 40;
+  if (state.history.length > 60) state.history.length = 60;
 }
 const favList = () => state.playlists['שירים אהובים'] || (state.playlists['שירים אהובים'] = []);
 
@@ -1378,11 +1378,36 @@ function closePage(id) { $(id).classList.remove('on'); }
 function sectionEl(title, bodyClass) {
   const sec = document.createElement('section');
   sec.className = 'asec';
-  const h = document.createElement('h3'); h.textContent = title;
+  const head = document.createElement('div'); head.className = 'asec-head';
+  const h = document.createElement('button'); h.className = 'asec-title'; h.type = 'button';
+  h.textContent = title;
+  const chev = document.createElement('span'); chev.className = 'asec-chev'; chev.setAttribute('aria-hidden', 'true'); chev.textContent = '‹';
+  h.appendChild(chev);
   const body = document.createElement('div');
   body.className = 'asec-body ' + (bodyClass || 'list');
-  sec.append(h, body);
-  return { sec, body };
+  head.appendChild(h);
+  sec.append(head, body);
+  if (body.classList.contains('hscroll')) {
+    const arrows = document.createElement('div'); arrows.className = 'asec-arrows';
+    for (const [glyph, direction, label] of [['‹', -1, 'הקודם'], ['›', 1, 'הבא']]) {
+      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'asec-arrow';
+      btn.textContent = glyph; btn.setAttribute('aria-label', label + ' - ' + title);
+      btn.addEventListener('click', () => body.scrollBy({ left: direction * Math.max(250, body.clientWidth * .8), behavior: 'smooth' }));
+      arrows.appendChild(btn);
+    }
+    head.appendChild(arrows);
+  }
+  return { sec, body, heading: h };
+}
+function sectionTracks(title, items) {
+  const tracks = (items || []).filter(t => t && t.id);
+  if (!tracks.length) return toast('אין שירים נוספים להצגה');
+  openPlName = title; openPlKind = 'section'; openPlTracks = () => tracks;
+  $('plTitle').textContent = title;
+  $('plOwner').textContent = 'Avi Music';
+  paintPlArt($('plArt'), tracks);
+  $('plRename').style.display = 'none'; $('plDelete').style.display = 'none';
+  renderPlTracks(); openPage('page-playlist');
 }
 function bigCard(t, kicker, onTap) {
   const el = document.createElement('div');
@@ -1475,7 +1500,8 @@ async function renderListen() {
 
   /* ---- 2. הושמעו לאחרונה ---- */
   if (h.length) {
-    const { sec, body } = sectionEl('הושמעו לאחרונה', 'hscroll');
+    const { sec, body, heading } = sectionEl('הושמעו לאחרונה', 'hscroll');
+    heading.addEventListener('click', () => sectionTracks('הושמעו לאחרונה', state.history));
     h.slice(0, 12).forEach(t => body.appendChild(sqCapCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
     box.appendChild(sec);
   } else {
@@ -1486,10 +1512,13 @@ async function renderListen() {
 
   /* ---- network sections: paint as they land ---- */
   const fillSec = (mkSec, q, cardFn, limit) => {
-    const { sec, body } = mkSec();
+    const { sec, body, heading } = mkSec();
+    let allItems = [];
+    heading.addEventListener('click', () => sectionTracks(heading.firstChild.textContent, allItems));
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
     searchMusicCached(q).then(items => {
+      allItems = items;
       body.innerHTML = '';
       items.slice(0, limit || 12).forEach(t => body.appendChild(cardFn(t, items)));
     }).catch(() => sec.remove());
@@ -1497,10 +1526,13 @@ async function renderListen() {
 
   /* 3. השירים החדשים הטובים ביותר: list rows */
   {
-    const { sec, body } = sectionEl('השירים החדשים הטובים ביותר', 'list');
+    const { sec, body, heading } = sectionEl('השירים החדשים הטובים ביותר', 'list');
+    let allItems = [];
+    heading.addEventListener('click', () => sectionTracks('השירים החדשים הטובים ביותר', allItems));
     body.innerHTML = '<div class="empty inline"><p>טוען...</p></div>';
     box.appendChild(sec);
     searchMusicCached('שירים חדשים 2026 ישראל').then(items => {
+      allItems = items;
       body.innerHTML = '';
       items.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(items, items.indexOf(t)) })));
     }).catch(() => sec.remove());
@@ -1539,6 +1571,21 @@ async function renderListen() {
         }));
       });
       box.appendChild(sec);
+      // Channel portraits are fetched from artist results; never substitute song-cover art for a person.
+      names.forEach(async (n, i) => {
+        const card = body.children[i];
+        if (!card || card.querySelector('.cc-bg img')) return;
+        try {
+          const matches = await searchChannels(n);
+          const exact = matches.find(c => normTxt(c.name.replace(/ - Topic$/i, '')) === normTxt(n));
+          if (!exact || !exact.avatar || !card.isConnected) return;
+          const bg = card.querySelector('.cc-bg');
+          bg.innerHTML = '';
+          const img = document.createElement('img'); img.loading = 'lazy'; img.alt = n; img.src = exact.avatar;
+          bg.appendChild(img);
+          card.onclick = () => openArtist(exact.chId, n, exact.avatar);
+        } catch {}
+      });
     }
   }
 
@@ -1719,6 +1766,7 @@ function paintPlArt(box, songs) {
   imgs.forEach(t => { const im = document.createElement('img'); im.src = thumb(t.id, 'hq'); box.appendChild(im); });
 }
 function openLocalPlaylist(name) {
+  $('plRename').style.display = ''; $('plDelete').style.display = '';
   openPlName = name; openPlKind = 'pl';
   openPlTracks = () => state.playlists[name] || [];
   $('plTitle').textContent = name;
@@ -1730,6 +1778,7 @@ function openLocalPlaylist(name) {
   openPage('page-playlist');
 }
 function openRecent() {
+  $('plRename').style.display = 'none'; $('plDelete').style.display = 'none';
   openPlKind = 'recent';
   openPlTracks = () => state.history;
   $('plTitle').textContent = 'הושמע לאחרונה';
