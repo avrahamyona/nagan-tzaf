@@ -1,4 +1,4 @@
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -164,6 +164,7 @@ function mapAlbum(x) {
     plId: m ? m[1] : '',
     title: x.name || x.title || '',
     thumb: x.thumbnail || '',
+    artistName: x.uploaderName || '', artistId: chFromUrl(x.uploaderUrl),
     sub: x.videos > 0 ? x.videos + ' שירים' : (x.uploaderName || ''),
   };
 }
@@ -857,7 +858,25 @@ function trackRow(t, opts = {}) {
     ${t.dur ? `<span class="dur">${fmt(t.dur)}</span>` : ''}
     <button class="dots" aria-label="אפשרויות"><svg><use href="#i-dots"/></svg></button>`;
   row.querySelector('.t').textContent = t.title;
-  row.querySelector('.a').textContent = opts.sub || t.artist;
+  const artistName = opts.sub || t.artist;
+  row.querySelector('.a').textContent = artistName;
+  if (opts.artistLink && artistName) {
+    const artist = row.querySelector('.a');
+    artist.classList.add('artist-link');
+    artist.setAttribute('role', 'button');
+    artist.setAttribute('tabindex', '0');
+    artist.setAttribute('aria-label', 'פתח אמן ' + artistName);
+    const open = e => {
+      if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+      e.stopPropagation();
+      if (e.type === 'keydown') e.preventDefault();
+      closePlayer();
+      if (t.ch) openArtist(t.ch, artistName, '');
+      else searchArtistAndOpen(artistName);
+    };
+    artist.addEventListener('click', open);
+    artist.addEventListener('keydown', open);
+  }
   row.addEventListener('click', () => opts.onPlay && opts.onPlay());
   row.querySelector('.dots').addEventListener('click', e => { e.stopPropagation(); openSongSheet(t, opts.sheet || {}); });
   return row;
@@ -875,7 +894,7 @@ function artistHit(c) {
   row.querySelector('.t').textContent = c.name.replace(/ - Topic$/i, '');
   if (c.verified) row.querySelector('.t').insertAdjacentHTML('beforeend', ' <svg style="width:13px;height:13px;vertical-align:-1px;color:#fa2d48"><use href="#i-check"/></svg>');
   row.querySelector('.a').textContent = 'אמן';
-  row.addEventListener('click', () => openArtist(c.chId, c.name, c.avatar));
+  row.addEventListener('click', () => { closePlayer(); openArtist(c.chId, c.name, c.avatar); });
   return row;
 }
 
@@ -1062,7 +1081,7 @@ $('cNext').addEventListener('click', next);
 $('cPrev').addEventListener('click', prev);
 $('pFav').addEventListener('click', () => { const t = current(); if (t) toggleFav(t); });
 $('pDots').addEventListener('click', () => { const t = current(); if (t) openSongSheet(t); });
-$('pArtist').addEventListener('click', () => { const t = current(); if (t && t.ch) openArtist(t.ch, t.artist, ''); });
+$('pArtist').addEventListener('click', () => { const t = current(); if (!t || !t.artist) return; closePlayer(); if (t.ch) openArtist(t.ch, t.artist, ''); else searchArtistAndOpen(t.artist); });
 // tap = +/-10s; long-press = 2x scrub (forward) / stepped rewind (back), restore on release
 function scrubHold(btn, dir) {
   let mode = null, pressTimer = null, rewTimer = null, longFired = false;
@@ -1428,7 +1447,7 @@ function switchTab(name) {
   if (name === 'radio') renderRadio();
   if (name === 'search') renderSearchHome();
 }
-document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => {
+function activateTab(b) {
   const currentTab = document.querySelector('.tabbtn.on')?.dataset.tab;
   if (b.dataset.tab === currentTab) {
     const page = document.querySelector('.page.on');
@@ -1443,7 +1462,8 @@ document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', ()
     return;
   }
   switchTab(b.dataset.tab);
-}));
+}
+document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => activateTab(b)));
 /* iPhone RTL edge-back: swipe from the right edge toward the left on a detail page. */
 (function rtlEdgeBack() {
   let start = null;
@@ -1467,41 +1487,53 @@ document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', ()
 })();
 
 
-/* draggable liquid-glass tab bubble (iOS 26 style) - horizontal on phone, vertical in the desktop sidebar */
+/* Draggable tab highlight: short taps must work even if iOS does not synthesize
+   a click after pointer capture, and a drag settles under the release point. */
 (function tabGlassDrag() {
   const bar = $('tabbar'), g = document.querySelector('.tabglass');
   if (!bar || !g) return;
-  let active = false, dragging = false, vertical = false, startP = 0, basePos = 0, lastP = 0, lastT = 0, v = 0, pid = null, baseSize = 0, suppressClick = false;
+  let active = false, dragging = false, vertical = false;
+  let startP = 0, basePos = 0, baseSize = 0, pid = null;
+  let lastP = 0, lastT = 0, v = 0, handledPointerTap = false, handledDrag = false;
+  const pos = e => vertical ? e.clientY : e.clientX;
+  const buttons = () => [...bar.querySelectorAll('.tabbtn')];
+  const nearest = clientP => {
+    const rect = bar.getBoundingClientRect();
+    const localP = clientP - (vertical ? rect.top : rect.left);
+    return buttons().reduce((best, b) => {
+      const center = (vertical ? b.offsetTop + b.offsetHeight / 2 : b.offsetLeft + b.offsetWidth / 2);
+      const distance = Math.abs(center - localP);
+      return distance < best.distance ? { b, distance } : best;
+    }, { b: null, distance: Infinity }).b;
+  };
   const bounds = () => {
-    const btns = [...bar.querySelectorAll('.tabbtn')];
-    if (!btns.length) return [0, 0];
-    const first = btns[0], last = btns[btns.length - 1];
+    const btns = buttons(), first = btns[0], last = btns.at(-1);
     return vertical
       ? [first.offsetTop, last.offsetTop + last.offsetHeight]
-      : [first.offsetLeft, last.offsetLeft + last.offsetWidth];
+      : [Math.min(first.offsetLeft, last.offsetLeft), Math.max(first.offsetLeft + first.offsetWidth, last.offsetLeft + last.offsetWidth)];
   };
   bar.addEventListener('pointerdown', e => {
+    if (!e.target.closest('.tabbtn')) return;
     active = true; dragging = false; pid = e.pointerId;
+    // A previous drag may not have produced a click. Never suppress a later tap.
+    handledDrag = false; handledPointerTap = false;
     vertical = tabGlassVertical(bar);
-    startP = lastP = vertical ? e.clientY : e.clientX; lastT = performance.now(); v = 0;
-    basePos = vertical ? g.offsetTop : g.offsetLeft; baseSize = vertical ? g.offsetHeight : g.offsetWidth;
+    startP = lastP = pos(e); lastT = performance.now(); v = 0;
+    basePos = vertical ? g.offsetTop : g.offsetLeft;
+    baseSize = vertical ? g.offsetHeight : g.offsetWidth;
+    try { bar.setPointerCapture(pid); } catch {}
   });
   bar.addEventListener('pointermove', e => {
     if (!active || e.pointerId !== pid) return;
-    const p = vertical ? e.clientY : e.clientX;
-    const now = performance.now();
-    v = 0.75 * v + 0.25 * ((p - lastP) / Math.max(1, now - lastT) * 16);
+    const p = pos(e), now = performance.now();
+    v = .75 * v + .25 * ((p - lastP) / Math.max(1, now - lastT) * 16);
     lastP = p; lastT = now;
     if (!dragging) {
-      if (Math.abs(p - startP) <= 12) return;   // still a tap: let the button's click fire
+      if (Math.abs(p - startP) <= 10) return;
       dragging = true;
       g.style.transition = 'none';
-      try { bar.setPointerCapture(pid); } catch {}
-      basePos = vertical ? g.offsetTop : g.offsetLeft;
-      baseSize = vertical ? g.offsetHeight : g.offsetWidth;
-      startP = p;
     }
-    const stretch = 1 + Math.min(Math.abs(v) * 0.025, 0.3);
+    const stretch = 1 + Math.min(Math.abs(v) * .015, .18);
     const size = baseSize * stretch;
     const [mn, mx] = bounds();
     let x = basePos + (p - startP) - (size - baseSize) / 2;
@@ -1510,25 +1542,31 @@ document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', ()
     else { g.style.left = x + 'px'; g.style.width = size + 'px'; }
   });
   const end = e => {
-    if (!active || (e && e.pointerId !== pid)) return;
+    if (!active || e.pointerId !== pid) return;
     active = false;
-    if (!dragging) return;   // plain tap: the button click handler switches tab and the bubble glides
-    dragging = false; suppressClick = true;
+    const wasDragging = dragging;
+    dragging = false;
+    try { if (bar.hasPointerCapture(pid)) bar.releasePointerCapture(pid); } catch {}
     g.style.transition = '';
-    const c = (vertical ? g.offsetTop : g.offsetLeft) + (vertical ? g.offsetHeight : g.offsetWidth) / 2;
-    let best = null, bd = 1e9;
-    bar.querySelectorAll('.tabbtn').forEach(b => {
-      const bc = (vertical ? b.offsetTop : b.offsetLeft) + (vertical ? b.offsetHeight : b.offsetWidth) / 2;
-      const d = Math.abs(bc - c);
-      if (d < bd) { bd = d; best = b; }
-    });
-    if (best) switchTab(best.dataset.tab);
+    if (e.type === 'pointercancel') { moveTabGlass(); return; }
+    const target = nearest(pos(e));
+    if (target) {
+      // Handle the tap on pointerup instead of relying on an iOS click that
+      // capture may cancel. Capture-phase click below prevents double action.
+      handledPointerTap = !wasDragging;
+      handledDrag = wasDragging;
+      if (wasDragging) switchTab(target.dataset.tab);
+      else activateTab(target);
+    }
     moveTabGlass();
   };
   bar.addEventListener('pointerup', end);
   bar.addEventListener('pointercancel', end);
   bar.addEventListener('click', e => {
-    if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; }
+    if (handledPointerTap || handledDrag) {
+      e.stopPropagation(); e.preventDefault();
+      handledPointerTap = false; handledDrag = false;
+    }
   }, true);
 })();
 
@@ -1598,6 +1636,22 @@ function albumCardEl(a) {
   el.innerHTML = `<img loading="lazy" src="${a.thumb}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
   el.querySelector('.ct').textContent = a.title;
   el.querySelector('.cs').textContent = a.sub;
+  if (a.artistName) {
+    const artist = el.querySelector('.cs');
+    artist.textContent = a.artistName;
+    artist.classList.add('artist-link');
+    artist.setAttribute('role', 'button');
+    artist.setAttribute('tabindex', '0');
+    artist.setAttribute('aria-label', 'פתח אמן ' + a.artistName);
+    const open = e => {
+      if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+      e.stopPropagation();
+      if (e.type === 'keydown') e.preventDefault();
+      closePlayer(); if (a.artistId) openArtist(a.artistId, a.artistName, ''); else searchArtistAndOpen(a.artistName);
+    };
+    artist.addEventListener('click', open);
+    artist.addEventListener('keydown', open);
+  }
   el.addEventListener('click', () => openAlbum(a));
   return el;
 }
@@ -2064,7 +2118,7 @@ async function openAlbum(a) {
 }
 $('alArtist').addEventListener('click', () => {
   const name = $('alArtist').textContent;
-  if (name) { searchArtistAndOpen(name); }
+  if (name) { closePlayer(); searchArtistAndOpen(name); }
 });
 $('alPlay').addEventListener('click', () => { if (alTracks.length) playQueue(alTracks, 0); });
 $('alShuffle').addEventListener('click', () => { if (!alTracks.length) return; state.shuffle = true; playQueue(alTracks, Math.floor(Math.random() * alTracks.length)); });
@@ -2123,7 +2177,7 @@ function renderSearchHome() {
   if (recent.length) {
     const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'הושמעו לאחרונה'; box.appendChild(h);
     const all = state.history.filter(t => t && t.id);
-    recent.forEach(t => box.appendChild(trackRow(t, { onPlay: () => playQueue(all, all.findIndex(x => x.id === t.id)) })));
+    recent.forEach(t => box.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(all, all.findIndex(x => x.id === t.id)) })));
   }
   const artists = [...new Set((state.history || []).map(t => t.artist).filter(Boolean))].slice(0, 6);
   if (artists.length) {
@@ -2132,7 +2186,7 @@ function renderSearchHome() {
       const row = document.createElement('button'); row.type = 'button'; row.className = 'row';
       row.innerHTML = '<div class="meta"><div class="t"></div></div>';
       row.querySelector('.t').textContent = name;
-      row.addEventListener('click', () => searchArtistAndOpen(name));
+      row.addEventListener('click', () => { closePlayer(); searchArtistAndOpen(name); });
       box.appendChild(row);
     });
   }
@@ -2170,7 +2224,7 @@ async function runSearch(q, pill) {
   if (vid) {
     const t = { id: vid, title: 'שיר מיוטיוב', artist: '', dur: 0 };
     box.innerHTML = '';
-    box.appendChild(trackRow(t, { onPlay: () => playQueue([t], 0) }));
+    box.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue([t], 0) }));
     enrichTitle(t);
     return;
   }
@@ -2226,7 +2280,7 @@ async function runSearch(q, pill) {
       if (!songs.length) return;
       const h = document.createElement('h2'); h.className = 'secttl js-songs'; h.textContent = 'שירים';
       const frag = document.createDocumentFragment();
-      songs.slice(0, 20).forEach((t, i) => frag.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+      songs.slice(0, 20).forEach((t, i) => frag.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(songs, i) })));
       const wrap = document.createElement('div'); wrap.className = 'js-songs'; wrap.appendChild(frag);
       const anchorLyr = box.querySelector('.js-lyr');
       box.insertBefore(h, anchorLyr); box.insertBefore(wrap, anchorLyr);
@@ -2291,6 +2345,7 @@ async function openArtist(chId, name, avatar) {
   openPage('page-artist');
   $('aName').textContent = name || 'אמן';
   $('aBanner').style.backgroundImage = avatar ? `url("${avatar}")` : '';
+  $('page-artist').classList.toggle('noimg', !avatar);
   $('aBody').innerHTML = '<div class="empty"><p>טוען...</p></div>';
   $('page-artist').querySelector('.ascroll').scrollTop = 0;
   setIcon($('aFav'), state.favArtists[chId] ? 'star-fill' : 'star');
@@ -2302,12 +2357,15 @@ async function openArtist(chId, name, avatar) {
   if (channel && !channel.error) {
     if (channel.name) { const dn = channel.name.replace(/ - Topic$/i, ''); $('aName').textContent = dn; aCur.name = dn; }
     if (channel.avatarUrl) aCur.avatar = channel.avatarUrl;
-    const bn = channel.bannerUrl || channel.avatarUrl;
-    if (bn) $('aBanner').style.backgroundImage = `url("${bn}")`;
+    // Channel banners may be abstract branding or thin text strips; a portrait
+    // is a better hero source when the image service supports a larger size.
+    const portrait = (channel.avatarUrl || '').replace(/=s160(?=-)/, '=s800');
+    const bn = portrait || channel.bannerUrl;
+    if (bn) { $('aBanner').style.backgroundImage = `url("${bn}")`; $('page-artist').classList.remove('noimg'); }
     else if (!avatar) {
       try {
         const cs = await searchChannels(aCur.name || name);
-        if (cs.length && cs[0].avatar) { aCur.avatar = cs[0].avatar; $('aBanner').style.backgroundImage = `url("${cs[0].avatar}")`; }
+        if (cs.length && cs[0].avatar) { aCur.avatar = cs[0].avatar; $('aBanner').style.backgroundImage = `url("${cs[0].avatar}")`; $('page-artist').classList.remove('noimg'); }
       } catch {}
     }
     songs = (channel.relatedStreams || [])
@@ -2315,7 +2373,12 @@ async function openArtist(chId, name, avatar) {
       .map(mapStream).filter(t => t.id).slice(0, 10);
   }
   const jobs = [];
-  jobs.push((async () => { if (!songs.length) { try { songs = (await searchMusic(name)).slice(0, 10); } catch {} } })());
+  jobs.push((async () => {
+    if (!songs.length) {
+      try { songs = (await searchMusic(name)).filter(t => t.ch === chId || normTxt(t.artist) === normTxt(name) || normTxt(t.artist) === normTxt(aCur.name)).slice(0, 30); }
+      catch {}
+    }
+  })());
   jobs.push((async () => {
     if (channel && Array.isArray(channel.tabs)) {
       const rel = channel.tabs.find(t => /releases/i.test(t.name || ''));
@@ -2323,17 +2386,18 @@ async function openArtist(chId, name, avatar) {
         try {
           const j = await pipedFetch('/channels/tabs?data=' + encodeURIComponent(rel.data) + '&id=' + chId, 8000);
           const list = Array.isArray(j) ? j : (j.content || []);
-          albums = list.filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId);
+          albums = list.filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId && (a.artistId === chId || normTxt(a.artistName) === normTxt(name)));
           if (albums.length) return;
         } catch {}
       }
     }
-    try { albums = await searchPlaylists(name, 'music_albums'); } catch {}
+    try { albums = (await searchPlaylists(name, 'music_albums')).filter(a => a.artistId === chId || normTxt(a.artistName) === normTxt(name)); } catch {}
   })());
   jobs.push((async () => {
     try {
       const j = await pipedFetch('/search?q=' + encodeURIComponent(name) + '&filter=music_videos', 8000);
-      videos = (j.items || []).filter(x => x.type === 'stream' && x.url).map(mapStream).filter(t => t.id).slice(0, 10);
+      videos = (j.items || []).filter(x => x.type === 'stream' && x.url).map(mapStream)
+        .filter(t => t.id && (t.ch === chId || normTxt(t.artist) === normTxt(aCur.name))).slice(0, 10);
     } catch {}
   })());
   await Promise.allSettled(jobs);
@@ -2343,30 +2407,36 @@ async function openArtist(chId, name, avatar) {
 async function searchArtistAndOpen(name) {
   try {
     const chans = await searchChannels(name);
-    if (chans.length) return openArtist(chans[0].chId, chans[0].name, chans[0].avatar);
+    const exact = chans.find(c => normTxt(c.name.replace(/ - Topic$/i, '')) === normTxt(name));
+    if (exact) return openArtist(exact.chId, exact.name, exact.avatar);
   } catch {}
   toast('לא מצאתי את דף האמן');
 }
 function renderArtistBody(songs, albums, videos) {
   const box = $('aBody'); box.innerHTML = '';
   aSongs = songs;
+  const artistName = aCur?.name || 'האמן';
   if (albums.length) {
     const latest = albums[0];
     const lc = document.createElement('div');
     lc.className = 'latestcard';
-    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">יצירה אחרונה</div><div class="lc-t"></div><div class="lc-s dim"></div></div>`;
+    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">אלבום נבחר</div><div class="lc-t"></div><div class="lc-s dim"></div></div>`;
     lc.querySelector('.lc-t').textContent = latest.title;
     lc.querySelector('.lc-s').textContent = latest.sub;
     lc.addEventListener('click', () => openAlbum(latest));
     box.appendChild(lc);
   }
   if (songs.length) {
-    const { sec, body } = sectionEl('שירים מובילים');
-    songs.forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+    const { sec, body, heading } = sectionEl('שירים מובילים');
+    heading.disabled = songs.length <= 8;
+    heading.addEventListener('click', () => sectionTracks('שירים של ' + artistName, songs));
+    songs.slice(0, 8).forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
     box.appendChild(sec);
   }
   if (albums.length) {
-    const { sec, body } = sectionEl('אלבומים', 'hscroll');
+    const { sec, body, heading } = sectionEl('אלבומים', 'hscroll');
+    heading.disabled = albums.length <= 12;
+    heading.addEventListener('click', () => openArtistAlbums(albums, 'אלבומים של ' + artistName));
     albums.slice(0, 12).forEach(a => body.appendChild(albumCardEl(a)));
     box.appendChild(sec);
   }
@@ -2401,11 +2471,26 @@ $('aFav').addEventListener('click', () => {
   setIcon($('aFav'), state.favArtists[aCur.chId] ? 'star-fill' : 'star');
   $('aFav').classList.toggle('on', !!state.favArtists[aCur.chId]);
 });
-$('aDots').addEventListener('click', () => {
-  if (!aCur) return;
-  if (state.favArtists[aCur.chId]) { delete state.favArtists[aCur.chId]; save(); toast('הוסר מהספריה'); setIcon($('aFav'), 'star'); $('aFav').classList.remove('on'); }
-  else { state.favArtists[aCur.chId] = { name: aCur.name, avatar: aCur.avatar || '' }; save(); toast('נשמר בספריה ★'); setIcon($('aFav'), 'star-fill'); $('aFav').classList.add('on'); }
-});
+function openArtistAlbums(albums, title) {
+  const box = $('alTracks'); box.replaceChildren();
+  $('alArt').src = albums[0]?.thumb || '';
+  $('alTitle').textContent = title;
+  $('alArtist').textContent = '';
+  $('alArtist').classList.remove('link');
+  $('alMeta').textContent = albums.length + ' אלבומים';
+  $('alPlay').style.display = 'none'; $('alShuffle').style.display = 'none';
+  const wrap = document.createElement('div'); wrap.className = 'artist-albums-grid';
+  albums.forEach(a => wrap.appendChild(albumCardEl(a)));
+  box.appendChild(wrap); openPage('page-album');
+}
+function shareArtist() {
+  if (!aCur?.chId) return;
+  const url = 'https://www.youtube.com/channel/' + encodeURIComponent(aCur.chId);
+  if (navigator.share) return navigator.share({ title: aCur.name, url }).catch(e => { if (e?.name !== 'AbortError') toast('לא הצלחתי לשתף'); });
+  return navigator.clipboard.writeText(url).then(() => toast('הקישור לאמן הועתק')).catch(() => toast(url, 6000));
+}
+$('aShare').addEventListener('click', shareArtist);
+$('aDots').addEventListener('click', shareArtist);
 
 /* ---------- background continuity: save position, resume on return ---------- */
 function captureResume() {
