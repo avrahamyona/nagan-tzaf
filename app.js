@@ -926,7 +926,7 @@ function renderSyncedLyrics(lines) {
   lyrSync.lines = lines;
   const body = $('lyrBody'); body.innerHTML = '';
   for (const l of lines) {
-    const d = document.createElement('div'); d.className = 'lyrline'; d.textContent = l.text;
+    const d = document.createElement('div'); d.className = 'lyrline'; d.dir = 'auto'; d.textContent = l.text;
     d.addEventListener('click', () => seekAbsS(l.t));
     body.appendChild(d);
   }
@@ -949,7 +949,7 @@ function renderPlainLyrics(txt) {
   lyrSync.lines = null; clearInterval(lyrSync.timer);
   const body = $('lyrBody'); body.innerHTML = '';
   for (const row of txt.split('\n')) {
-    const d = document.createElement('div'); d.className = 'lyrline plain'; d.textContent = row.trim() || '\u00A0';
+    const d = document.createElement('div'); d.className = 'lyrline plain'; d.dir = 'auto'; d.textContent = row.trim() || '\u00A0';
     body.appendChild(d);
   }
 }
