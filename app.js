@@ -70,6 +70,19 @@ async function searchChannels(q) {
     }))
     .filter(c => c.chId);
 }
+async function searchLyrics(q) {
+  const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
+  if (!r.ok) throw new Error('lrclib ' + r.status);
+  const j = await r.json();
+  const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  return (Array.isArray(j) ? j : []).slice(0, 6).map(it => {
+    const lyr = it.plainLyrics || '';
+    const lines = lyr.split('\n').map(s => s.trim()).filter(Boolean);
+    const line = lines.find(l => words.every(w => l.toLowerCase().includes(w)))
+      || lines.find(l => words.some(w => l.toLowerCase().includes(w))) || '';
+    return { title: it.trackName || '', artist: it.artistName || '', line };
+  }).filter(x => x.title && x.artist);
+}
 async function searchPlaylists(q, filter = 'music_albums') {
   const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + filter, 8000);
   return (j.items || []).filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId);
@@ -208,7 +221,7 @@ function armAutoResume(el) {
 const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1351,7 +1364,7 @@ async function runSearch(q, pill) {
       return;
     }
     // top / songs
-    const jobs = { songs: searchMusic(q) };
+    const jobs = { songs: searchMusic(q), lyrics: searchLyrics(q) };
     if (pill === 'top') { jobs.artists = searchChannels(q); jobs.albums = searchPlaylists(q, 'music_albums'); }
     const res = {};
     await Promise.all(Object.entries(jobs).map(async ([k, p]) => { try { res[k] = await p; } catch { res[k] = []; } }));
@@ -1364,6 +1377,27 @@ async function runSearch(q, pill) {
       const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'שירים';
       box.appendChild(h);
       songs.slice(0, 20).forEach((t, i) => box.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+    }
+    const lyr = (res.lyrics || []).filter(x => x.line);
+    if (lyr.length) {
+      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'נמצא במילים';
+      box.appendChild(h);
+      lyr.slice(0, 5).forEach(x => {
+        const row = document.createElement('button');
+        row.className = 'row lyrrow';
+        row.innerHTML = '<div class="lyrnote">\u266A</div><div class="meta"><div class="t"></div><div class="a"></div><div class="lyrsnip dim"></div></div>';
+        row.querySelector('.t').textContent = x.title;
+        row.querySelector('.a').textContent = x.artist;
+        row.querySelector('.lyrsnip').textContent = '\u201C' + x.line + '\u201D';
+        row.addEventListener('click', async () => {
+          try {
+            const songs = await searchMusic(x.artist + ' ' + x.title);
+            if (songs.length) playQueue(songs, 0);
+            else toast('לא נמצאה התאמה ביוטיוב');
+          } catch { toast('החיפוש לא זמין כרגע'); }
+        });
+        box.appendChild(row);
+      });
     }
     if (pill === 'top' && res.albums && res.albums.length) {
       const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'אלבומים';
