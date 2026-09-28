@@ -248,7 +248,7 @@ const M = () => (engine === 'clip') ? clipEl : audioEl;
 let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let restoreAttempt = false; // resuming after relaunch/background: failure must not skip
 let audioRetry = 0;
-const APP_VERSION = 'v33b';
+const APP_VERSION = 'v34';
 function showStreamDiag() {
   const d = window._streamDiag;
   toast(d ? ('אבחון: ' + d) : 'אין נתוני אבחון עדיין', 6000);
@@ -1173,6 +1173,52 @@ function switchTab(name) {
   if (name === 'search') renderSearchHome();
 }
 document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+/* draggable liquid-glass tab bubble (iOS 26 style) */
+(function tabGlassDrag() {
+  const bar = $('tabbar'), g = document.querySelector('.tabglass');
+  if (!bar || !g) return;
+  let dragging = false, startX = 0, baseLeft = 0, lastX = 0, lastT = 0, vx = 0, pid = null, baseW = 0, suppressClick = false;
+  bar.addEventListener('pointerdown', e => {
+    dragging = true; pid = e.pointerId;
+    startX = lastX = e.clientX; lastT = performance.now(); vx = 0;
+    baseLeft = g.offsetLeft; baseW = g.offsetWidth;
+    g.style.transition = 'none';
+    try { bar.setPointerCapture(pid); } catch {}
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!dragging || e.pointerId !== pid) return;
+    const now = performance.now();
+    vx = 0.75 * vx + 0.25 * ((e.clientX - lastX) / Math.max(1, now - lastT) * 16);
+    lastX = e.clientX; lastT = now;
+    const stretch = 1 + Math.min(Math.abs(vx) * 0.025, 0.3);
+    const w = baseW * stretch;
+    const x = Math.max(2, Math.min(bar.clientWidth - w - 2, baseLeft + (e.clientX - startX) - (w - baseW) / 2));
+    g.style.left = x + 'px';
+    g.style.width = w + 'px';
+  });
+  const end = e => {
+    if (!dragging || (e && e.pointerId !== pid)) return;
+    dragging = false;
+    if (Math.abs(lastX - startX) > 12) suppressClick = true;
+    g.style.transition = '';
+    const cx = g.offsetLeft + g.offsetWidth / 2;
+    let best = null, bd = 1e9;
+    bar.querySelectorAll('.tabbtn').forEach(b => {
+      const c = b.offsetLeft + b.offsetWidth / 2;
+      const d = Math.abs(c - cx);
+      if (d < bd) { bd = d; best = b; }
+    });
+    if (best) switchTab(best.dataset.tab);
+    moveTabGlass();
+  };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  bar.addEventListener('click', e => {
+    if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; }
+  }, true);
+})();
+
 window.addEventListener('resize', moveTabGlass);
 window.addEventListener('load', () => setTimeout(moveTabGlass, 50));
 setTimeout(moveTabGlass, 300);
