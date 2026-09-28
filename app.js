@@ -1,4 +1,4 @@
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -619,7 +619,7 @@ function onPlayerState(st) {
     try { yt.stopVideo(); } catch {}
     return;
   }
-  if (st === YT.PlayerState.PLAYING) { restoreAttempt = false; syncPlayUI(false); }
+  if (st === YT.PlayerState.PLAYING) { restoreAttempt = false; registerMediaControls(); syncPlayUI(false); }
   else if (st === YT.PlayerState.PAUSED) { syncPlayUI(true); }
   else if (st === YT.PlayerState.ENDED) { if (engine === 'yt') advance(1, true); }
 }
@@ -845,19 +845,29 @@ function updateMediaSession() {
     if (art && current() && current().id === t.id) setMeta(art);
   });
 }
-try {
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => { userPaused = false; if (activeAudio()) M().play().catch(() => {}); else ytReady && yt.playVideo(); });
-    navigator.mediaSession.setActionHandler('pause', () => { userPaused = true; if (activeAudio()) M().pause(); else ytReady && yt.pauseVideo(); });
-    navigator.mediaSession.setActionHandler('nexttrack', next);
-    navigator.mediaSession.setActionHandler('previoustrack', prev);
-    navigator.mediaSession.setActionHandler('seekto', d => {
+function registerMediaControls() {
+  if (!('mediaSession' in navigator)) return;
+  // iOS may choose its lock-screen transport controls only after the media
+  // element starts playing. Refresh the same actions on each actual play,
+  // including switches from direct audio to a clip or YouTube fallback.
+  const actions = [
+    ['play', () => { userPaused = false; if (activeAudio()) M().play().catch(() => {}); else ytReady && yt.playVideo(); }],
+    ['pause', () => { userPaused = true; if (activeAudio()) M().pause(); else ytReady && yt.pauseVideo(); }],
+    ['nexttrack', next], ['previoustrack', prev],
+    ['seekto', d => {
       if (d.seekTime == null) return;
       if (activeAudio()) M().currentTime = d.seekTime;
       else if (ytReady) yt.seekTo(d.seekTime, true);
-    });
+    }],
+  ];
+  for (const [action, handler] of actions) {
+    try { navigator.mediaSession.setActionHandler(action, handler); }
+    catch {} // One unsupported action must not prevent registering the skip actions.
   }
-} catch {}
+}
+registerMediaControls();
+audioEl.addEventListener('playing', registerMediaControls);
+clipEl.addEventListener('playing', registerMediaControls);
 
 /* ---------- progress clock ---------- */
 let lastCur = -1, endArmed = false;
