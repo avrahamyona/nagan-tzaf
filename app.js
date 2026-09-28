@@ -871,11 +871,20 @@ function renderLibrary() {
   pls.innerHTML = '';
   Object.keys(state.playlists).filter(n => n !== 'שירים אהובים').forEach(name => {
     const songs = state.playlists[name] || [];
-    pls.appendChild(trackRow({ id: songs[0] ? songs[0].id : 'x', title: name, artist: songs.length + ' שירים' }, {
-      sub: songs.length + ' שירים',
-      onPlay: () => openLocalPlaylist(name),
-      sheet: { onRemove: () => { if (confirm(`למחוק את "${name}"?`)) { delete state.playlists[name]; save(); renderLibrary(); } } },
-    }));
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      ${songs.length ? `<img loading="lazy" src="${thumb(songs[0].id)}" alt="">` : `<div class="plph"><svg><use href="#i-note"/></svg></div>`}
+      <div class="meta"><div class="t"></div><div class="a"></div></div>
+      <button class="dots" aria-label="אפשרויות"><svg><use href="#i-dots"/></svg></button>`;
+    row.querySelector('.t').textContent = name;
+    row.querySelector('.a').textContent = songs.length + ' שירים';
+    row.addEventListener('click', () => openLocalPlaylist(name));
+    row.querySelector('.dots').addEventListener('click', e => {
+      e.stopPropagation();
+      if (confirm(`למחוק את "${name}"?`)) { delete state.playlists[name]; save(); renderLibrary(); }
+    });
+    pls.appendChild(row);
   });
 }
 $('newPl').addEventListener('click', () => {

@@ -399,3 +399,5 @@ body.vid #ytwrap { display: block; }
 .pageback svg { transform: scaleX(-1); }
 .abanner { filter: saturate(1.1); }
 .ahero.noimg .abanner { background: linear-gradient(160deg,#3a3a3e,#17171a); }
+.plph { width: 48px; height: 48px; border-radius: 5px; background: var(--card2); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.plph svg { width: 22px; height: 22px; color: var(--dim); }
