@@ -1,14 +1,14 @@
 'use strict';
-/* ============ נגן צף — v1 ============
-   Static PWA. Playback via the official YouTube IFrame player (hidden, off-screen).
-   Search via public Piped API instances with failover; paste-a-link always works.
-   Playlists live in localStorage on the device. */
+/* ============ מוזיקה — Apple Music clone (v11) ============
+   Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
+   audio via public Piped instances when available. Content: YouTube via Piped.
+   All data lives in localStorage on the device. */
 
 const $ = id => document.getElementById(id);
 const IS_IOS = /iPhone|iPod|iPad/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-/* ---------- Piped search (with failover) ---------- */
+/* ---------- Piped (with failover) ---------- */
 const PIPED_HOSTS = [
   'https://api.piped.private.coffee',
   'https://pipedapi.kavin.rocks',
@@ -70,7 +70,19 @@ async function searchChannels(q) {
     }))
     .filter(c => c.chId);
 }
-
+async function searchPlaylists(q, filter = 'music_albums') {
+  const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=' + filter, 8000);
+  return (j.items || []).filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId);
+}
+function mapAlbum(x) {
+  const m = String(x.url || '').match(/list=([A-Za-z0-9_-]+)/);
+  return {
+    plId: m ? m[1] : '',
+    title: x.name || x.title || '',
+    thumb: x.thumbnail || '',
+    sub: x.videos > 0 ? x.videos + ' שירים' : (x.uploaderName || ''),
+  };
+}
 function vidFromUrl(s) {
   if (!s) return '';
   const m = String(s).match(/(?:v=|youtu\.be\/|shorts\/|\/watch\/|embed\/)([A-Za-z0-9_-]{11})/);
@@ -78,29 +90,49 @@ function vidFromUrl(s) {
   return /^[A-Za-z0-9_-]{11}$/.test(s.trim()) ? s.trim() : '';
 }
 const thumb = (id, q) => `https://i.ytimg.com/vi/${id}/${q || 'mq'}default.jpg`;
+const sqThumb = (id, q) => `https://i.ytimg.com/vi/${id}/${q || 'hq'}default.jpg`;
+const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const fmtRem = (c, d) => '-' + fmt(Math.max(0, (d || 0) - (c || 0)));
 
 /* ---------- state ---------- */
-const LS_KEY = 'nagan_state_v1';
+const LS_KEY = 'nagan_state_v2';
 let state = {
-  playlists: { 'מועדפים ❤️': [] },
+  playlists: { 'שירים אהובים': [] },
   queue: [], qi: 0,
-  shuffle: false, repeat: 'off', // off | all | one
+  shuffle: false, repeat: 'off',
   volume: 90,
+  fav: {},            // videoId -> true
+  favArtists: {},     // chId -> {name, avatar}
+  albums: {},         // plId -> {plId,title,thumb,sub}
+  history: [],        // recent tracks, newest first (max 40)
+  station: null,      // {seed, name} when radio autoplay is on
 };
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
-  if (saved && saved.playlists) state = Object.assign(state, saved);
+  if (saved) state = Object.assign(state, saved);
+  // migrate v1
+  const old = JSON.parse(localStorage.getItem('nagan_state_v1') || 'null');
+  if (old && old.playlists && !saved) { state.playlists = old.playlists; state.queue = old.queue || []; state.qi = old.qi || 0; }
 } catch {}
 function save() {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
+      fav: state.fav, favArtists: state.favArtists, albums: state.albums,
+      history: state.history.slice(0, 40),
     }));
   } catch {}
 }
+function pushHistory(t) {
+  if (!t || !t.id) return;
+  state.history = state.history.filter(x => x.id !== t.id);
+  state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch });
+  if (state.history.length > 40) state.history.length = 40;
+}
+const favList = () => state.playlists['שירים אהובים'] || (state.playlists['שירים אהובים'] = []);
 
-/* ---------- YouTube player engine ---------- */
+/* ---------- YouTube embed engine ---------- */
 let yt = null, ytReady = false, pendingLoad = null, seeking = false;
 window.onYouTubeIframeAPIReady = function () {
   yt = new YT.Player('ytplayer', {
@@ -129,12 +161,12 @@ window.onYouTubeIframeAPIReady = function () {
   document.head.appendChild(s);
 })();
 
-/* ---------- audio engine: ad-free direct streams, embed as fallback ---------- */
+/* ---------- audio engine: ad-free direct streams, embed fallback ---------- */
 const audioEl = document.createElement('audio');
 audioEl.preload = 'none';
-let engine = 'yt'; // 'audio' | 'yt'
+let engine = 'yt'; // 'audio' | 'yt' | 'yt-pending'
 let audioRetry = 0;
-const STREAM_API = localStorage.getItem('nagan_stream_api') || ''; // own proxy when deployed
+const STREAM_API = localStorage.getItem('nagan_stream_api') || '';
 
 function pickAudio(j) {
   const as = ((j && j.audioStreams) || []).filter(a => a.url);
@@ -143,14 +175,12 @@ function pickAudio(j) {
   return (mp4.length ? mp4 : as).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0].url;
 }
 async function resolveAudioUrl(vid) {
-  // 1) own proxy, when deployed
   if (STREAM_API) {
     try {
       const r = await fetch(STREAM_API.replace(/\/$/, '') + '/audio/' + vid);
       if (r.ok) { const j = await r.json(); if (j.url) return j.url; }
     } catch {}
   }
-  // 2) race all Piped hosts in parallel - first valid audio stream wins
   try {
     return await Promise.any(PIPED_HOSTS.map(base => (async () => {
       const ctl = new AbortController();
@@ -165,9 +195,6 @@ async function resolveAudioUrl(vid) {
   } catch {}
   return null;
 }
-
-/* iOS unlock: a media element that was play()ed inside a real user gesture
-   may be played programmatically afterwards - so prime it on the first tap. */
 (function primeAudioUnlock() {
   const unlock = () => {
     try { const p = audioEl.play(); if (p && p.then) p.then(() => audioEl.pause()).catch(() => {}); } catch {}
@@ -183,17 +210,13 @@ function useYtEngine(t, startAt) {
   if (ytReady) yt.loadVideoById(startAt ? { videoId: t.id, startSeconds: startAt } : t.id);
   else pendingLoad = t.id;
 }
-
 function loadTrack(t, opts = {}) {
   if (!t) return;
   lastCur = -1;
   if (videoMode) { useYtEngine(t, opts.startAt); return; }
-  // song mode: ad-free direct audio first, official embed as graceful fallback
   engine = 'audio';
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
-  // Inside a real tap, start the embed immediately so playback begins at once;
-  // if an ad-free stream resolves, we hand over to it. Otherwise the embed just plays on.
   const hasGesture = !!(navigator.userActivation && navigator.userActivation.isActive);
   if (hasGesture && ytReady) {
     engine = 'yt-pending';
@@ -201,7 +224,7 @@ function loadTrack(t, opts = {}) {
   }
   resolveAudioUrl(t.id).then(url => {
     if (audioEl.dataset.vid !== t.id || videoMode) return;
-    if (!url) { // seamless fallback
+    if (!url) {
       if (engine === 'yt-pending') engine = 'yt';
       else useYtEngine(t, opts.startAt);
       return;
@@ -212,18 +235,16 @@ function loadTrack(t, opts = {}) {
     audioEl.src = url;
     if (opts.startAt) { try { audioEl.currentTime = opts.startAt; } catch {} }
     if (wasPlaying || hasGesture) audioEl.play().catch(() => { useYtEngine(t, opts.startAt); });
-    else if (audioEl.src) syncPlayUI(true);
     else syncPlayUI(true);
   });
 }
-
 audioEl.addEventListener('ended', () => advance(1, true));
 audioEl.addEventListener('play', () => syncPlayUI(false));
 audioEl.addEventListener('pause', () => syncPlayUI(true));
 audioEl.addEventListener('error', () => {
   const t = current();
   if (!t || videoMode || audioEl.dataset.vid !== t.id) return;
-  if (audioRetry++ < 1) { // one fresh resolve, then embed
+  if (audioRetry++ < 1) {
     resolveAudioUrl(t.id).then(url => {
       if (url && audioEl.dataset.vid === t.id && !videoMode) { audioEl.src = url; audioEl.play().catch(() => {}); }
       else useYtEngine(t);
@@ -237,7 +258,6 @@ function onPlayerState(st) {
   else if (st === YT.PlayerState.PAUSED) { syncPlayUI(true); }
   else if (st === YT.PlayerState.ENDED) { advance(1, true); }
 }
-
 let errGuard = 0;
 function onTrackError() {
   const t = current();
@@ -250,15 +270,30 @@ function onTrackError() {
 /* ---------- queue ---------- */
 const current = () => state.queue[state.qi] || null;
 
-function playQueue(tracks, idx) {
+function playQueue(tracks, idx, opts = {}) {
   state.queue = tracks.slice(); state.qi = idx || 0;
+  state.station = opts.station || null;
   const t = current();
   if (!t) return;
+  pushHistory(t);
   loadTrack(t);
   paintNow(); save();
 }
-
-function advance(dir, auto) {
+async function stationRefill() {
+  const st = state.station;
+  if (!st) return false;
+  const seed = current();
+  try {
+    const j = await pipedFetch('/streams/' + (seed ? seed.id : st.seed), 8000);
+    const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream')
+      .map(mapStream).filter(t => t.id && !state.queue.some(q => q.id === t.id));
+    if (!rel.length) return false;
+    state.queue = state.queue.concat(rel.slice(0, 12));
+    save();
+    return true;
+  } catch { return false; }
+}
+async function advance(dir, auto) {
   if (!state.queue.length) return;
   if (auto && state.repeat === 'one') { loadTrack(current()); return; }
   let n = state.qi;
@@ -267,17 +302,25 @@ function advance(dir, auto) {
   } else {
     n = state.qi + dir;
     if (n >= state.queue.length) {
-      if (state.repeat === 'all' || !auto) n = 0;
-      else { syncPlayUI(true); return; } // end of queue
+      if (state.station) {
+        const ok = await stationRefill();
+        if (ok) { n = state.qi; } // stay on last index; refill appended, +1 below
+        n = state.qi + dir;
+        if (n >= state.queue.length) { syncPlayUI(true); return; }
+      } else if (state.repeat === 'all' || !auto) n = 0;
+      else { syncPlayUI(true); return; }
     }
     if (n < 0) n = state.queue.length - 1;
   }
-  state.qi = n; loadTrack(current()); paintNow(); save();
+  state.qi = n;
+  const t = current();
+  if (t) pushHistory(t);
+  loadTrack(t); paintNow(); save();
 }
-
 const next = () => advance(1, false);
 const prev = () => {
   if (ytReady && yt.getCurrentTime && yt.getCurrentTime() > 4) { yt.seekTo(0, true); return; }
+  if (activeAudio() && audioEl.currentTime > 4) { audioEl.currentTime = 0; return; }
   advance(-1, false);
 };
 function togglePlay() {
@@ -293,14 +336,14 @@ function togglePlay() {
   if (st === YT.PlayerState.PLAYING) yt.pauseVideo(); else yt.playVideo();
 }
 
-/* ---------- media session (lock screen) ---------- */
+/* ---------- media session ---------- */
 function updateMediaSession() {
   if (!('mediaSession' in navigator)) return;
   const t = current();
   if (!t) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title, artist: t.artist, album: 'נגן צף',
+      title: t.title, artist: t.artist, album: 'מוזיקה',
       artwork: [
         { src: thumb(t.id, 'mq'), sizes: '320x180', type: 'image/jpeg' },
         { src: thumb(t.id, 'hq'), sizes: '480x360', type: 'image/jpeg' },
@@ -322,7 +365,7 @@ try {
   }
 } catch {}
 
-/* ---------- progress clock: poll-based, because onStateChange is unreliable on some embeds ---------- */
+/* ---------- progress clock ---------- */
 let lastCur = -1, endArmed = false;
 setInterval(() => {
   if (!current()) return;
@@ -334,16 +377,15 @@ setInterval(() => {
     if (!ytReady) return;
     d = yt.getDuration ? (yt.getDuration() || 0) : 0;
     c = yt.getCurrentTime ? (yt.getCurrentTime() || 0) : 0;
-    // playing = the clock is moving (embed events are unreliable on some devices)
     paused = !(c > lastCur + 0.05);
     lastCur = c;
   }
   syncPlayUI(paused);
   if (!seeking) {
     if (d > 0) $('seek').value = Math.round((c / d) * 1000);
-    $('tCur').textContent = fmt(c); $('tDur').textContent = fmt(d);
+    $('tCur').textContent = fmt(c);
+    $('tRem').textContent = d > 0 ? fmtRem(c, d) : '-0:00';
   }
-  // end-of-track detection without events (audio 'ended' also fires, this is belt+braces)
   if (d > 2 && c >= d - 0.7 && !paused) {
     if (!endArmed) { endArmed = true; setTimeout(() => { endArmed = false; }, 3000); advance(1, true); }
   }
@@ -352,252 +394,228 @@ setInterval(() => {
       navigator.mediaSession.setPositionState({ duration: d, position: Math.min(c, d), playbackRate: 1 });
   } catch {}
 }, 500);
-const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 
-/* ---------- UI: now playing ---------- */
-function setIcon(btn, name) { const u = btn.querySelector('use'); if (u) u.setAttribute('href', '#i-' + name); }
+/* ---------- now-playing UI ---------- */
+function setIcon(btn, name) { const u = btn && btn.querySelector('use'); if (u) u.setAttribute('href', '#i-' + name); }
 function syncPlayUI(paused) {
   setIcon($('mPlay'), paused ? 'play' : 'pause');
   setIcon($('cPlay'), paused ? 'play' : 'pause');
   try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = paused ? 'paused' : 'playing'; } catch {}
-  paintRows();
+  paintPlayingRows();
 }
-
+function tintPlayer(img) {
+  // extract dominant color from the artwork for the full-screen wash
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 24;
+    const cx = cv.getContext('2d');
+    cx.drawImage(img, 0, 0, 24, 24);
+    const d = cx.getImageData(0, 0, 24, 24).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+    const mix = (c, t, w) => Math.round(c * w + t * (1 - w));
+    const r1 = mix(r, 40, .55), g1 = mix(g, 40, .55), b1 = mix(b, 44, .55);
+    document.documentElement.style.setProperty('--np-bg1', `rgb(${r1},${g1},${b1})`);
+    document.documentElement.style.setProperty('--np-bg2', `rgb(${mix(r, 8, .2)},${mix(g, 8, .2)},${mix(b, 10, .2)})`);
+  } catch {}
+}
 function paintNow() {
   const t = current();
   if (!t) { $('mini').classList.add('hidden'); return; }
   $('mini').classList.remove('hidden');
-  $('mArt').src = thumb(t.id); $('mTitle').textContent = t.title; $('mArtist').textContent = t.artist;
-  $('pArt').src = thumb(t.id, 'hq');
-  $('pArt').onerror = () => { $('pArt').src = thumb(t.id); };
+  $('mArt').src = thumb(t.id);
+  $('mTitle').textContent = t.title; $('mArtist').textContent = t.artist;
+  const art = $('pArt');
+  art.crossOrigin = 'anonymous';
+  art.onload = () => tintPlayer(art);
+  art.src = sqThumb(t.id, 'maxres');
+  art.onerror = () => { art.onerror = null; art.src = thumb(t.id, 'hq'); };
   $('pTitle').textContent = t.title; $('pArtist').textContent = t.artist;
   $('pArtist').classList.toggle('link', !!t.ch);
   $('cOpenYT').href = 'https://music.youtube.com/watch?v=' + t.id;
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
   setIcon($('cRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
+  setIcon($('pFav'), state.fav[t.id] ? 'star-fill' : 'star');
+  $('pFav').classList.toggle('on', !!state.fav[t.id]);
   updateMediaSession();
-  paintRows();
+  paintPlayingRows();
 }
-
 function restoreLast() {
   const t = current();
   if (!t) return;
-  // restore paused: nothing loads until the user presses play (audio resolves then)
   paintNow(); syncPlayUI(true);
 }
 
-/* ---------- UI: rows ---------- */
+/* ---------- rows ---------- */
 function trackRow(t, opts = {}) {
   const row = document.createElement('div');
   row.className = 'row' + (current() && current().id === t.id ? ' playing' : '');
   row.dataset.vid = t.id;
   row.innerHTML = `
-    <img loading="lazy" src="${thumb(t.id)}" alt="">
+    ${opts.num != null ? `<span class="num">${opts.num}</span>` : ''}
+    ${opts.noArt ? '' : `<img loading="lazy" src="${thumb(t.id)}" alt="">`}
     <div class="meta"><div class="t"></div><div class="a"></div></div>
-    ${t.dur ? `<span class="dur">${fmt(t.dur)}</span>` : ''}`;
+    ${t.dur ? `<span class="dur">${fmt(t.dur)}</span>` : ''}
+    <button class="dots" aria-label="אפשרויות"><svg><use href="#i-dots"/></svg></button>`;
   row.querySelector('.t').textContent = t.title;
-  row.querySelector('.a').textContent = t.artist;
+  row.querySelector('.a').textContent = opts.sub || t.artist;
   row.addEventListener('click', () => opts.onPlay && opts.onPlay());
-  if (opts.onAdd) {
-    const b = document.createElement('button');
-    b.className = 'iconbtn'; b.textContent = '＋'; b.title = 'הוסף לרשימה';
-    b.addEventListener('click', e => { e.stopPropagation(); openAddSheet(t); });
-    row.appendChild(b);
-  }
-  if (opts.onRemove) {
-    const b = document.createElement('button');
-    b.className = 'iconbtn'; b.textContent = '🗑️'; b.title = 'הסר';
-    b.addEventListener('click', e => { e.stopPropagation(); opts.onRemove(); });
-    row.appendChild(b);
-  }
+  row.querySelector('.dots').addEventListener('click', e => { e.stopPropagation(); openSongSheet(t, opts.sheet || {}); });
   return row;
 }
-function paintRows() {
+function paintPlayingRows() {
   const cur = current();
   document.querySelectorAll('.row').forEach(r => {
     r.classList.toggle('playing', !!(cur && r.dataset.vid === cur.id));
   });
 }
+function artistHit(c) {
+  const row = document.createElement('div');
+  row.className = 'artisthit';
+  row.innerHTML = `<img loading="lazy" src="${c.avatar || ''}" alt=""><div class="meta"><div class="t"></div><div class="a"></div></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
+  row.querySelector('.t').textContent = c.name + (c.verified ? ' ✔︎' : '');
+  row.querySelector('.a').textContent = 'אמן';
+  row.addEventListener('click', () => openArtist(c.chId, c.name, c.avatar));
+  return row;
+}
 
-/* ---------- search ---------- */
-let searchTimer = null, searchSeq = 0, searchMode = 'songs';
-const input = $('searchInput');
-document.querySelectorAll('#segMode .segb').forEach(b => b.addEventListener('click', () => {
-  searchMode = b.dataset.mode;
-  document.querySelectorAll('#segMode .segb').forEach(x => x.classList.toggle('on', x === b));
-  input.placeholder = searchMode === 'artists' ? 'חפש אמן...' : 'שירים, אמנים, או קישור יוטיוב';
-  const q = input.value.trim();
-  if (q) { clearTimeout(searchTimer); runSearch(q); }
+/* ---------- sheets ---------- */
+const openSheet = id => { $(id).classList.remove('hidden'); requestAnimationFrame(() => $(id).classList.add('open')); $('scrim').classList.add('on'); };
+const closeSheet = id => { $(id).classList.remove('open'); setTimeout(() => $(id).classList.add('hidden'), 240); if (!document.querySelector('.sheetbox.open')) $('scrim').classList.remove('on'); };
+const closeAllSheets = () => document.querySelectorAll('.sheetbox').forEach(s => closeSheet(s.id));
+$('scrim').addEventListener('click', closeAllSheets);
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => {
+  const t = b.dataset.close;
+  if (t.startsWith('page-')) closePage(t); else closeSheet(t);
 }));
-input.addEventListener('input', () => {
-  $('clearSearch').classList.toggle('hidden', !input.value);
-  clearTimeout(searchTimer);
-  const q = input.value.trim();
-  if (!q) { $('results').innerHTML = ''; $('homeHint').classList.remove('hidden'); hideNetNote(); return; }
-  searchTimer = setTimeout(() => runSearch(q), 450);
-});
-input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(input.value.trim()); } });
-$('clearSearch').addEventListener('click', () => { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); });
 
-async function runSearch(q) {
-  if (!q) return;
-  switchTab('search');
-  const vid = vidFromUrl(q);
-  const seq = ++searchSeq;
-  $('homeHint').classList.add('hidden');
-  $('results').innerHTML = '<div class="empty"><p>מחפש...</p></div>';
-
-  if (vid) { // a pasted YouTube link / id
-    const t = { id: vid, title: 'שיר מיוטיוב', artist: '', dur: 0 };
-    $('results').innerHTML = '';
-    $('results').appendChild(trackRow(t, { onPlay: () => playQueue([t], 0), onAdd: true }));
-    enrichTitle(t);
-    return;
+let sheetTrack = null, sheetOpts = {};
+function openSongSheet(t, opts = {}) {
+  sheetTrack = t; sheetOpts = opts;
+  $('songSheetHead').innerHTML = `<img src="${thumb(t.id)}" alt=""><div class="meta"><div class="t"></div><div class="a dim"></div></div>`;
+  $('songSheetHead').querySelector('.t').textContent = t.title;
+  $('songSheetHead').querySelector('.a').textContent = t.artist;
+  setIcon($('ssFav'), state.fav[t.id] ? 'star-fill' : 'star');
+  $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'הסר מהמועדפים' : 'הוסף למועדפים';
+  $('ssArtist').classList.toggle('hidden', !t.ch);
+  $('ssRemove').classList.toggle('hidden', !opts.onRemove);
+  openSheet('songSheet');
+}
+function toggleFav(t) {
+  if (state.fav[t.id]) {
+    delete state.fav[t.id];
+    const i = favList().findIndex(x => x.id === t.id);
+    if (i >= 0) favList().splice(i, 1);
+    toast('הוסר מהמועדפים');
+  } else {
+    state.fav[t.id] = 1;
+    if (!favList().some(x => x.id === t.id)) favList().unshift(t);
+    toast('נוסף למועדפים ★');
   }
-  if (searchMode === 'artists') {
-    try {
-      const chans = await searchChannels(q);
-      if (seq !== searchSeq) return;
-      hideNetNote();
-      $('results').innerHTML = '';
-      if (!chans.length) { $('results').innerHTML = '<div class="empty"><p>לא נמצאו אמנים. נסו ניסוח אחר.</p></div>'; return; }
-      chans.forEach(c => $('results').appendChild(artistCard(c)));
-    } catch (e) {
-      if (seq !== searchSeq) return;
-      $('results').innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע.</p><p class="dim">אפשר גם לחפש שיר ולפתוח את האמן משם.</p></div>';
-      showNetNote('שירות החיפוש החיצוני לא עונה כרגע.');
-    }
-    return;
-  }
-  try {
-    const items = await searchMusic(q);
-    if (seq !== searchSeq) return;
-    hideNetNote();
-    $('results').innerHTML = '';
-    if (!items.length) { $('results').innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>'; return; }
-    items.forEach((t, i) => $('results').appendChild(trackRow(t, {
-      onPlay: () => playQueue(items, i), onAdd: true,
-    })));
-  } catch (e) {
-    if (seq !== searchSeq) return;
-    $('results').innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע.</p><p class="dim">אפשר תמיד להדביק כאן קישור של שיר מיוטיוב ולנגן ישירות.</p></div>';
-    showNetNote('שירות החיפוש החיצוני לא עונה כרגע. הדביקת קישור יוטיוב עובדת תמיד.');
-  }
+  save(); paintNow(); renderLibrary();
 }
+$('ssFav').addEventListener('click', () => { if (sheetTrack) toggleFav(sheetTrack); closeSheet('songSheet'); });
+$('ssAdd').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack) openAddSheet(sheetTrack); });
+$('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack && sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); });
+$('ssRemove').addEventListener('click', () => { closeSheet('songSheet'); if (sheetOpts.onRemove) sheetOpts.onRemove(); });
 
-async function enrichTitle(t) {
-  try {
-    const j = await pipedFetch('/streams/' + t.id, 7000);
-    if (j && j.title) { t.title = j.title; t.artist = j.uploader || ''; t.dur = j.duration || 0; t.ch = chFromUrl(j.uploaderUrl) || t.ch || ''; save(); paintRows(); paintNow(); }
-  } catch {}
-}
-
-/* ---------- playlists ---------- */
-function switchTab(name) {
-  document.querySelectorAll('.tabbtn[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
-  $('view-search').classList.toggle('on', name === 'search');
-  $('view-playlists').classList.toggle('on', name === 'playlists');
-  $('view-playlist').classList.remove('on');
-  if (name === 'playlists') renderPlaylists();
-}
-document.querySelectorAll('.tabbtn[data-tab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-
-function renderPlaylists() {
-  const box = $('playlists'); box.innerHTML = '';
-  const names = Object.keys(state.playlists);
-  if (!names.length) { box.innerHTML = '<div class="empty"><p>עוד אין רשימות. צרו אחת!</p></div>'; return; }
-  names.forEach(name => {
-    const songs = state.playlists[name];
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `<div class="pl-ic">🎶</div><div class="meta"><div class="t"></div><div class="a"></div></div><span class="dur">${songs.length}</span>`;
-    row.querySelector('.t').textContent = name;
-    row.querySelector('.a').textContent = songs.length ? songs.map(s => s.title).slice(0, 2).join(' · ') : 'ריקה';
-    row.addEventListener('click', () => openPlaylist(name));
-    box.appendChild(row);
-  });
-}
-
-let openPl = null;
-function openPlaylist(name) {
-  openPl = name;
-  switchTab('playlists');
-  $('view-playlists').classList.remove('on');
-  $('view-playlist').classList.add('on');
-  $('plName').textContent = name;
-  renderPlSongs();
-}
-function renderPlSongs() {
-  const songs = state.playlists[openPl] || [];
-  const artEl = $('plArt');
-  if (songs.length) artEl.innerHTML = `<img src="${thumb(songs[0].id, 'hq')}" alt="">`;
-  else artEl.innerHTML = '<svg><use href="#i-note"/></svg>';
-  $('plCount').textContent = songs.length + ' שירים';
-  const box = $('plSongs'); box.innerHTML = '';
-  if (!songs.length) { box.innerHTML = '<div class="empty"><p>הרשימה ריקה. חפשו שירים ולחצו ＋ כדי להוסיף.</p></div>'; return; }
-  songs.forEach((t, i) => box.appendChild(trackRow(t, {
-    onPlay: () => playQueue(songs, i),
-    onRemove: () => { songs.splice(i, 1); save(); renderPlSongs(); renderPlaylists(); },
-  })));
-}
-$('plBack').addEventListener('click', () => switchTab('playlists'));
-$('plPlayAll').addEventListener('click', () => {
-  const s = state.playlists[openPl] || [];
-  if (s.length) playQueue(s, 0); else toast('הרשימה ריקה');
-});
-$('plShufflePlay').addEventListener('click', () => {
-  const s = state.playlists[openPl] || [];
-  if (!s.length) return toast('הרשימה ריקה');
-  state.shuffle = true; playQueue(s, Math.floor(Math.random() * s.length)); toast('מנגן אקראי 🔀');
-});
-$('plRename').addEventListener('click', () => {
-  const nn = (prompt('שם חדש לרשימה:', openPl) || '').trim();
-  if (!nn || nn === openPl) return;
-  if (state.playlists[nn]) return toast('כבר יש רשימה בשם הזה');
-  state.playlists[nn] = state.playlists[openPl];
-  delete state.playlists[openPl];
-  openPl = nn; save(); openPlaylist(nn);
-});
-$('plDelete').addEventListener('click', () => {
-  if (!confirm(`למחוק את הרשימה "${openPl}"?`)) return;
-  delete state.playlists[openPl];
-  save(); switchTab('playlists');
-});
-$('newPlaylistBtn').addEventListener('click', () => {
-  const name = (prompt('שם הרשימה:') || '').trim();
-  if (!name) return;
-  if (state.playlists[name]) return toast('כבר יש רשימה בשם הזה');
-  state.playlists[name] = []; save(); renderPlaylists();
-});
-
-/* ---------- add-to-playlist sheet ---------- */
 let addTarget = null;
 function openAddSheet(t) {
   addTarget = t;
   const box = $('addList'); box.innerHTML = '';
   Object.keys(state.playlists).forEach(name => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `<div class="pl-ic">🎶</div><div class="meta"><div class="t"></div><div class="a"></div></div>`;
-    row.querySelector('.t').textContent = name;
-    row.querySelector('.a').textContent = (state.playlists[name] || []).length + ' שירים';
+    const row = document.createElement('button');
+    row.className = 'sheetrow';
+    row.innerHTML = `<svg><use href="#i-note"/></svg><span></span>`;
+    row.querySelector('span').textContent = name;
     row.addEventListener('click', () => {
       const exists = (state.playlists[name] || []).some(x => x.id === t.id);
       if (exists) toast('השיר כבר ברשימה הזאת');
       else { state.playlists[name].push(t); save(); toast(`נוסף ל"${name}" ✔`); }
-      closeSheets();
+      closeAllSheets();
     });
     box.appendChild(row);
   });
-  $('addSheet').classList.add('open'); $('scrim').classList.add('on');
+  openSheet('addSheet');
 }
 $('addNew').addEventListener('click', () => {
   const name = (prompt('שם הרשימה:') || '').trim();
   if (!name) return;
   if (!state.playlists[name]) state.playlists[name] = [];
   state.playlists[name].push(addTarget);
-  save(); closeSheets(); toast(`נוסף ל"${name}" ✔`);
+  save(); closeAllSheets(); toast(`נוסף ל"${name}" ✔`);
+});
+
+/* queue sheet */
+$('cQueue').addEventListener('click', () => {
+  const box = $('queueList'); box.innerHTML = '';
+  const up = state.queue.slice(state.qi);
+  if (!up.length) { box.innerHTML = '<div class="empty"><p>התור ריק</p></div>'; }
+  up.forEach((t, i) => box.appendChild(trackRow(t, {
+    onPlay: () => { state.qi = state.qi + i; pushHistory(t); loadTrack(t); paintNow(); save(); closeSheet('queueSheet'); },
+  })));
+  openSheet('queueSheet');
+});
+
+/* ---------- player open/close ---------- */
+const openPlayer = () => { $('player').classList.remove('hidden'); };
+const closePlayer = () => { $('player').classList.add('hidden'); };
+$('pDown').addEventListener('click', closePlayer);
+$('mini').addEventListener('click', e => { if (!e.target.closest('.mbtn')) openPlayer(); });
+
+/* ---------- player controls ---------- */
+$('mPlay').addEventListener('click', togglePlay);
+$('cPlay').addEventListener('click', togglePlay);
+$('mNext').addEventListener('click', next);
+$('cNext').addEventListener('click', next);
+$('cPrev').addEventListener('click', prev);
+$('pFav').addEventListener('click', () => { const t = current(); if (t) toggleFav(t); });
+$('pDots').addEventListener('click', () => { const t = current(); if (t) openSongSheet(t); });
+$('pArtist').addEventListener('click', () => { const t = current(); if (t && t.ch) openArtist(t.ch, t.artist, ''); });
+$('cBack10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
+$('cFwd10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
+(function () {
+  const t = $('vidTouch'); let holdTimer = null, ff = false, downAt = 0;
+  const start = () => {
+    downAt = Date.now();
+    holdTimer = setTimeout(() => { ff = true; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(2); $('ffwd').classList.remove('hidden'); }, 380);
+  };
+  const end = () => {
+    clearTimeout(holdTimer);
+    if (ff) { ff = false; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(1); $('ffwd').classList.add('hidden'); }
+    else if (Date.now() - downAt < 380) togglePlay();
+  };
+  t.addEventListener('pointerdown', start);
+  t.addEventListener('pointerup', end);
+  t.addEventListener('pointercancel', end);
+  t.addEventListener('pointerleave', end);
+})();
+$('cShuffle').addEventListener('click', () => { state.shuffle = !state.shuffle; save(); paintNow(); toast(state.shuffle ? 'נגינה אקראית' : 'נגינה לפי הסדר'); });
+$('cRepeat').addEventListener('click', () => {
+  state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';
+  save(); paintNow();
+  toast(state.repeat === 'off' ? 'בלי חזרה' : state.repeat === 'all' ? 'חזרה על הרשימה' : 'חזרה על השיר');
+});
+$('cLyrics').addEventListener('click', () => {
+  const t = current();
+  if (t) window.open('https://www.google.com/search?q=' + encodeURIComponent(t.title + ' ' + t.artist + ' מילים'), '_blank');
+});
+const volEl = $('vol');
+volEl.value = state.volume;
+volEl.addEventListener('input', () => {
+  state.volume = +volEl.value; save();
+  audioEl.volume = state.volume / 100;
+  if (ytReady && yt.setVolume) yt.setVolume(state.volume);
+});
+if (IS_IOS) document.querySelector('.volrow').style.display = 'none';
+const seekEl = $('seek');
+seekEl.addEventListener('input', () => { seeking = true; });
+seekEl.addEventListener('change', () => {
+  if (activeAudio()) { if (audioEl.duration) audioEl.currentTime = (seekEl.value / 1000) * audioEl.duration; }
+  else if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
+  seeking = false;
 });
 
 /* ---------- song/video toggle ---------- */
@@ -608,11 +626,11 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   const t = current();
   let pos = 0, wasPlaying = false;
   if (t) {
-    if (videoMode) { // leaving video (yt) -> song (audio)
+    if (videoMode) {
       pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
       wasPlaying = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
       try { yt.pauseVideo(); } catch {}
-    } else { // leaving song (audio) -> video (yt)
+    } else {
       pos = audioEl.src ? (audioEl.currentTime || 0) : 0;
       wasPlaying = !!(audioEl.src && !audioEl.paused);
       try { audioEl.pause(); } catch {}
@@ -621,7 +639,6 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   videoMode = toVideo;
   document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x === b));
   document.body.classList.toggle('vid', videoMode);
-  $('ytwrap').classList.toggle('vid', videoMode && $('sheet').classList.contains('open'));
   if (t) {
     if (videoMode) {
       useYtEngine(t, pos);
@@ -639,72 +656,6 @@ document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('clic
   }
 }));
 
-/* ---------- sheets ---------- */
-function closeSheets() {
-  $('sheet').classList.remove('open'); $('addSheet').classList.remove('open'); $('scrim').classList.remove('on');
-}
-const sheetObserver = new MutationObserver(() => {
-  const open = $('sheet').classList.contains('open');
-  $('ytwrap').classList.toggle('vid', videoMode && open);
-});
-sheetObserver.observe($('sheet'), { attributes: true, attributeFilter: ['class'] });
-$('scrim').addEventListener('click', closeSheets);
-$('sheetGrab').addEventListener('click', closeSheets);
-$('addGrab').addEventListener('click', closeSheets);
-$('mMeta').addEventListener('click', () => { $('sheet').classList.add('open'); $('scrim').classList.add('on'); });
-$('mArt').addEventListener('click', () => { $('sheet').classList.add('open'); $('scrim').classList.add('on'); });
-
-/* ---------- player controls ---------- */
-$('mPlay').addEventListener('click', togglePlay);
-$('cPlay').addEventListener('click', togglePlay);
-$('mNext').addEventListener('click', next);
-$('cNext').addEventListener('click', next);
-$('cPrev').addEventListener('click', prev);
-$('cBack10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.max(0, audioEl.currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); });
-$('cFwd10').addEventListener('click', () => { if (activeAudio()) audioEl.currentTime = Math.min(audioEl.duration || 1e9, audioEl.currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); });
-
-/* long-press on video = 2x while held (YouTube style) */
-(function () {
-  const t = $('vidTouch'); let holdTimer = null, ff = false, downAt = 0;
-  const start = e => {
-    downAt = Date.now();
-    holdTimer = setTimeout(() => {
-      ff = true; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(2);
-      $('ffwd').classList.remove('hidden');
-    }, 380);
-  };
-  const end = () => {
-    clearTimeout(holdTimer);
-    if (ff) { ff = false; if (ytReady && yt.setPlaybackRate) yt.setPlaybackRate(1); $('ffwd').classList.add('hidden'); }
-    else if (Date.now() - downAt < 380) togglePlay(); // short tap on the video = play/pause
-  };
-  t.addEventListener('pointerdown', start);
-  t.addEventListener('pointerup', end);
-  t.addEventListener('pointercancel', end);
-  t.addEventListener('pointerleave', end);
-})();
-$('cShuffle').addEventListener('click', () => { state.shuffle = !state.shuffle; save(); paintNow(); toast(state.shuffle ? 'נגינה אקראית 🔀' : 'נגינה לפי הסדר'); });
-$('cRepeat').addEventListener('click', () => {
-  state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';
-  save(); paintNow();
-  toast(state.repeat === 'off' ? 'בלי חזרה' : state.repeat === 'all' ? 'חזרה על הרשימה 🔁' : 'חזרה על השיר 🔂');
-});
-$('cAdd').addEventListener('click', () => { const t = current(); if (t) openAddSheet(t); });
-$('vol').addEventListener('input', () => {
-  state.volume = +$('vol').value; save();
-  audioEl.volume = state.volume / 100;
-  if (ytReady && yt.setVolume) yt.setVolume(state.volume);
-});
-$('vol').value = state.volume;
-if (IS_IOS) { const vr = document.querySelector('.volrow'); if (vr) vr.style.display = 'none'; } // iOS web can't set volume
-const seekEl = $('seek');
-seekEl.addEventListener('input', () => { seeking = true; });
-seekEl.addEventListener('change', () => {
-  if (activeAudio()) { if (audioEl.duration) audioEl.currentTime = (seekEl.value / 1000) * audioEl.duration; }
-  else if (ytReady && yt.getDuration) yt.seekTo((seekEl.value / 1000) * yt.getDuration(), true);
-  seeking = false;
-});
-
 /* ---------- toast + notes ---------- */
 let toastTimer = null;
 function toast(msg, ms = 2600) {
@@ -716,87 +667,501 @@ function toast(msg, ms = 2600) {
 function showNetNote(msg) { $('netNote').textContent = msg; $('netNote').classList.remove('hidden'); }
 function hideNetNote() { $('netNote').classList.add('hidden'); }
 
-/* ---------- info + iOS tip ---------- */
-$('infoBtn').addEventListener('click', () => $('infoModal').classList.remove('hidden'));
-$('infoClose').addEventListener('click', () => $('infoModal').classList.add('hidden'));
-if (IS_IOS && !localStorage.getItem('nagan_ios_tip')) {
-  setTimeout(() => $('iosTip').classList.remove('hidden'), 2500);
+/* ---------- tabs & pages ---------- */
+function switchTab(name) {
+  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + name));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  if (name === 'library') renderLibrary();
+  if (name === 'listen') renderListen();
+  if (name === 'browse') renderBrowse();
+  if (name === 'radio') renderRadio();
 }
-$('iosTipOk').addEventListener('click', () => {
-  $('iosTip').classList.add('hidden');
-  localStorage.setItem('nagan_ios_tip', '1');
-});
+document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+function openPage(id) { $(id).classList.add('on'); }
+function closePage(id) { $(id).classList.remove('on'); }
 
-/* ---------- keep mini player alive when tab hidden ---------- */
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && current()) syncPlayUI(ytReady ? yt.getPlayerState() !== YT.PlayerState.PLAYING : true);
-});
-
-/* ---------- service worker ---------- */
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-
-
-/* ---------- artist pages (Apple Music style) ---------- */
-let aSongs = [], aSeq = 0;
-
-function fmtSubs(n) {
-  if (!n || n <= 0) return '';
-  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M מעוקבים';
-  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K מעוקבים';
-  return n + ' מעוקבים';
-}
-
-function artistCard(c) {
-  const row = document.createElement('div');
-  row.className = 'row';
-  row.innerHTML = `
-    <img loading="lazy" class="round" src="${c.avatar || ''}" alt="">
-    <div class="meta"><div class="t"></div><div class="a"></div></div>
-    <svg class="chev"><use href="#i-chev"/></svg>`;
-  row.querySelector('.t').textContent = c.name + (c.verified ? ' ✔︎' : '');
-  row.querySelector('.a').textContent = fmtSubs(c.subs) || 'אמן';
-  row.addEventListener('click', () => openArtist(c.chId, c.name, c.avatar));
-  return row;
-}
-
-function aSection(title) {
+/* ---------- card helpers ---------- */
+function sectionEl(title, bodyClass) {
   const sec = document.createElement('section');
   sec.className = 'asec';
   const h = document.createElement('h3'); h.textContent = title;
-  const body = document.createElement('div'); body.className = 'asec-body';
+  const body = document.createElement('div');
+  body.className = 'asec-body ' + (bodyClass || 'list');
   sec.append(h, body);
   return { sec, body };
 }
+function bigCard(t, kicker, onTap) {
+  const el = document.createElement('div');
+  el.className = 'bigcard';
+  el.innerHTML = `<div class="bc-img"><img loading="lazy" src="${thumb(t.id, 'hq')}" alt=""><div class="bc-ov"><div class="bc-kicker"></div><div class="bc-title"></div><div class="bc-sub"></div></div></div>`;
+  el.querySelector('.bc-kicker').textContent = kicker || '';
+  el.querySelector('.bc-title').textContent = t.title;
+  el.querySelector('.bc-sub').textContent = t.artist || '';
+  el.addEventListener('click', onTap);
+  return el;
+}
+function sqCard(t, onTap, sub) {
+  const el = document.createElement('div');
+  el.className = 'card sq';
+  el.innerHTML = `<img loading="lazy" src="${thumb(t.id, 'hq')}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
+  el.querySelector('.ct').textContent = t.title;
+  el.querySelector('.cs').textContent = sub != null ? sub : t.artist;
+  el.addEventListener('click', onTap);
+  return el;
+}
+function albumCardEl(a) {
+  const el = document.createElement('div');
+  el.className = 'card sq';
+  el.innerHTML = `<img loading="lazy" src="${a.thumb}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
+  el.querySelector('.ct').textContent = a.title;
+  el.querySelector('.cs').textContent = a.sub;
+  el.addEventListener('click', () => openAlbum(a));
+  return el;
+}
+function gradCard(title, color, onTap) {
+  const el = document.createElement('div');
+  el.className = 'gradcard';
+  el.style.background = color;
+  el.innerHTML = `<svg class="gc-note"><use href="#i-note"/></svg><div class="gc-title"></div>`;
+  el.querySelector('.gc-title').textContent = title;
+  el.addEventListener('click', onTap);
+  return el;
+}
+function stationCard(name, avatar, onTap) {
+  const el = document.createElement('div');
+  el.className = 'stationcard';
+  el.innerHTML = `<img loading="lazy" src="${avatar || ''}" alt=""><div class="ct"></div><div class="cs">תחנת ${''}</div>`;
+  el.querySelector('.ct').textContent = name;
+  el.querySelector('.cs').textContent = 'התחנה של ' + name;
+  el.addEventListener('click', onTap);
+  return el;
+}
+const GRADS = ['linear-gradient(135deg,#fa2d48,#b3123a)', 'linear-gradient(135deg,#5e5ce6,#3634a3)', 'linear-gradient(135deg,#ff9f0a,#ff6b00)', 'linear-gradient(135deg,#30d158,#148a3d)', 'linear-gradient(135deg,#bf5af2,#7a1fa2)', 'linear-gradient(135deg,#64d2ff,#0a84ff)', 'linear-gradient(135deg,#ff6961,#c92a2a)', 'linear-gradient(135deg,#ffd60a,#ff9f0a)'];
 
+/* ---------- האזנה (Listen Now) ---------- */
+let listenLoaded = 0;
+async function renderListen() {
+  const box = $('listenBody');
+  const h = state.history;
+  box.innerHTML = '';
+  // top picks from history
+  if (h.length) {
+    const { sec, body } = sectionEl('הבחירות המובילות', 'hscroll');
+    h.slice(0, 8).forEach((t, i) => body.appendChild(bigCard(t, i === 0 ? 'מושמע עכשיו' : 'שוב לשמוע', () => playQueue(h, h.indexOf(t)))));
+    box.appendChild(sec);
+    const { sec: s2, body: b2 } = sectionEl('הושמע לאחרונה', 'hscroll');
+    h.slice(0, 12).forEach(t => b2.appendChild(sqCard(t, () => playQueue(h, h.indexOf(t)), t.artist)));
+    box.appendChild(s2);
+  } else {
+    box.innerHTML = '<div class="empty"><div class="big">🎵</div><h2>ברוכים הבאים</h2><p>נגן משהו ונתחיל להכיר את הטעם שלך.</p></div>';
+  }
+  // made for you: derived from history artists, else Israeli defaults
+  const topArtists = [...new Set(h.map(t => t.artist).filter(Boolean))].slice(0, 4);
+  const seeds = topArtists.length ? topArtists : ['אייל גולן', 'מושיק עפיה', 'אדם', 'עומר אדם'];
+  const { sec: s3, body: b3 } = sectionEl(topArtists.length ? 'בשבילך' : 'פלייליסטים בשבילך', 'hscroll');
+  seeds.forEach((a, i) => b3.appendChild(gradCard('המיקס של ' + a, GRADS[i % GRADS.length], async () => {
+    toast('בונה מיקס של ' + a + '...');
+    try {
+      const items = await searchMusic(a);
+      if (items.length) playQueue(items, 0, { station: { seed: items[0].id, name: a } });
+      else toast('לא נמצאו שירים');
+    } catch { toast('החיפוש לא זמין כרגע'); }
+  })));
+  box.appendChild(s3);
+  // fresh section (network), loaded once per while
+  if (Date.now() - listenLoaded > 10 * 60 * 1000) {
+    listenLoaded = Date.now();
+    const { sec: s4, body: b4 } = sectionEl('חם עכשיו בישראל', 'hscroll');
+    b4.innerHTML = '<div class="empty"><p>טוען...</p></div>';
+    box.appendChild(s4);
+    try {
+      const items = await searchMusic('השירים הכי שמועים בישראל');
+      b4.innerHTML = '';
+      items.slice(0, 12).forEach(t => b4.appendChild(sqCard(t, () => playQueue(items, items.indexOf(t)), t.artist)));
+    } catch { s4.remove(); }
+  }
+}
+
+/* ---------- עיון (Browse) ---------- */
+let browseLoaded = 0;
+async function renderBrowse() {
+  if (Date.now() - browseLoaded < 10 * 60 * 1000 && $('browseBody').children.length) return;
+  browseLoaded = Date.now();
+  const box = $('browseBody');
+  box.innerHTML = '<div class="empty"><p>טוען...</p></div>';
+  const mk = (title) => { const { sec, body } = sectionEl(title, 'hscroll'); return { sec, body }; };
+  box.innerHTML = '';
+  const s1 = mk('השירים החדשים'); box.appendChild(s1.sec);
+  const s2 = mk('להיטי ישראל'); box.appendChild(s2.sec);
+  const s3 = mk('מזרחית וים-תיכונית'); box.appendChild(s3.sec);
+  const s4 = mk('מוזיקה ערבית'); box.appendChild(s4.sec);
+  const fill = async (body, q, vid) => {
+    try {
+      const items = await searchMusic(q, vid ? 'music_videos' : 'music_songs');
+      body.innerHTML = '';
+      items.slice(0, 12).forEach(t => body.appendChild(sqCard(t, () => playQueue(items, items.indexOf(t)), t.artist)));
+    } catch { body.innerHTML = '<div class="empty"><p>לא זמין כרגע</p></div>'; }
+  };
+  fill(s1.body, 'שירים חדשים 2026 ישראל');
+  fill(s2.body, 'להיטים ישראלים');
+  fill(s3.body, 'מוזיקה מזרחית להיטים');
+  fill(s4.body, 'اغاني عربية');
+}
+
+/* ---------- רדיו ---------- */
+async function renderRadio() {
+  const box = $('radioBody');
+  box.innerHTML = '';
+  const hero = document.createElement('div');
+  hero.className = 'radiohero';
+  const seedT = state.history[0];
+  hero.innerHTML = `<img alt="" src="${seedT ? thumb(seedT.id, 'hq') : ''}"><div class="rh-ov"><div class="rh-k">תחנה אישית</div><div class="rh-t">הרדיו שלך</div><div class="rh-s">שירים שאתה אוהב ועוד כמוהם</div></div>`;
+  hero.addEventListener('click', async () => {
+    toast('מפעיל את הרדיו שלך...');
+    try {
+      let seed = seedT;
+      if (!seed) {
+        const items = await searchMusic('להיטים ישראלים');
+        if (!items.length) throw 0;
+        playQueue(items, 0, { station: { seed: items[0].id, name: 'הרדיו שלך' } });
+        return;
+      }
+      const j = await pipedFetch('/streams/' + seed.id, 8000);
+      const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
+      const q = [seed, ...rel];
+      playQueue(q, 0, { station: { seed: seed.id, name: 'הרדיו שלך' } });
+    } catch { toast('לא זמין כרגע'); }
+  });
+  box.appendChild(hero);
+  const { sec, body } = sectionEl('תחנות של אמנים', 'hscroll');
+  const favs = Object.entries(state.favArtists).map(([chId, a]) => ({ chId, name: a.name, avatar: a.avatar }));
+  const hist = [...new Set(state.history.map(t => t.artist).filter(Boolean))].slice(0, 6).map(n => ({ name: n, avatar: '' }));
+  const list = favs.length ? favs.concat(hist.filter(x => !favs.some(f => f.name === x.name))).slice(0, 8) : (hist.length ? hist : [
+    { name: 'אייל גולן' }, { name: 'עומר אדם' }, { name: 'איתי לוי' }, { name: 'מושיק עפיה' }, { name: 'נועה קירל' }, { name: 'עידן רייכל' },
+  ]);
+  list.forEach(a => body.appendChild(stationCard(a.name, a.avatar, async () => {
+    toast('מפעיל את התחנה של ' + a.name + '...');
+    try {
+      const items = await searchMusic(a.name);
+      if (items.length) playQueue(items, 0, { station: { seed: items[0].id, name: a.name } });
+      else toast('לא נמצאו שירים');
+    } catch { toast('החיפוש לא זמין כרגע'); }
+  })));
+  box.appendChild(sec);
+}
+
+/* ---------- ספריה ---------- */
+function renderLibrary() {
+  const rows = $('libRows');
+  rows.innerHTML = '';
+  const mkRow = (label, icon, count, onTap) => {
+    const el = document.createElement('div');
+    el.className = 'librow';
+    el.innerHTML = `<div class="lic"><svg><use href="#${icon}"/></svg></div><div class="lt"></div><svg class="chev"><use href="#i-chev-fwd"/></svg>`;
+    el.querySelector('.lt').textContent = count != null ? `${label} (${count})` : label;
+    el.addEventListener('click', onTap);
+    rows.appendChild(el);
+  };
+  mkRow('שירים אהובים', 'i-star-fill', favList().length, () => openLocalPlaylist('שירים אהובים'));
+  mkRow('הושמע לאחרונה', 'i-queue', state.history.length, () => openRecent());
+  mkRow('אמנים', 'i-tab-listen', Object.keys(state.favArtists).length, () => openLibArtists());
+  mkRow('אלבומים', 'i-note', Object.keys(state.albums).length, () => openLibAlbums());
+  const pls = $('libPls');
+  pls.innerHTML = '';
+  Object.keys(state.playlists).filter(n => n !== 'שירים אהובים').forEach(name => {
+    const songs = state.playlists[name] || [];
+    pls.appendChild(trackRow({ id: songs[0] ? songs[0].id : 'x', title: name, artist: songs.length + ' שירים' }, {
+      sub: songs.length + ' שירים',
+      onPlay: () => openLocalPlaylist(name),
+      sheet: { onRemove: () => { if (confirm(`למחוק את "${name}"?`)) { delete state.playlists[name]; save(); renderLibrary(); } } },
+    }));
+  });
+}
+$('newPl').addEventListener('click', () => {
+  const name = (prompt('שם הרשימה:') || '').trim();
+  if (!name) return;
+  if (state.playlists[name]) return toast('כבר יש רשימה בשם הזה');
+  state.playlists[name] = []; save(); renderLibrary();
+});
+
+/* ---------- דף פלייליסט (מקומי) ---------- */
+let openPlName = null, openPlTracks = null, openPlKind = null;
+function paintPlArt(box, songs) {
+  box.innerHTML = '';
+  box.classList.remove('single');
+  const imgs = songs.slice(0, 4);
+  if (!imgs.length) { box.classList.add('single'); box.innerHTML = '<svg><use href="#i-note"/></svg>'; return; }
+  imgs.forEach(t => { const im = document.createElement('img'); im.src = thumb(t.id, 'hq'); box.appendChild(im); });
+}
+function openLocalPlaylist(name) {
+  openPlName = name; openPlKind = 'pl';
+  openPlTracks = () => state.playlists[name] || [];
+  $('plTitle').textContent = name;
+  $('plOwner').textContent = 'הרשימות שלי';
+  const songs = openPlTracks();
+  paintPlArt($('plArt'), songs);
+  $('plMeta').textContent = songs.length + ' שירים';
+  renderPlTracks();
+  openPage('page-playlist');
+}
+function openRecent() {
+  openPlKind = 'recent';
+  openPlTracks = () => state.history;
+  $('plTitle').textContent = 'הושמע לאחרונה';
+  $('plOwner').textContent = 'ההיסטוריה שלך';
+  const songs = openPlTracks();
+  paintPlArt($('plArt'), songs);
+  $('plMeta').textContent = songs.length + ' שירים';
+  renderPlTracks();
+  openPage('page-playlist');
+}
+function renderPlTracks() {
+  const songs = openPlTracks();
+  $('plMeta').textContent = songs.length + ' שירים';
+  const box = $('plTracks'); box.innerHTML = '';
+  if (!songs.length) { box.innerHTML = '<div class="empty"><p>הרשימה ריקה. חפשו שירים ולחצו ••• כדי להוסיף.</p></div>'; return; }
+  songs.forEach((t, i) => box.appendChild(trackRow(t, {
+    onPlay: () => playQueue(songs, i),
+    sheet: openPlKind === 'pl' ? { onRemove: () => { songs.splice(i, 1); save(); renderPlTracks(); renderLibrary(); paintPlArt($('plArt'), songs); } } : {},
+  })));
+}
+$('plPlay').addEventListener('click', () => { const s = openPlTracks(); if (s.length) playQueue(s, 0); else toast('הרשימה ריקה'); });
+$('plShuffle').addEventListener('click', () => { const s = openPlTracks(); if (!s.length) return toast('הרשימה ריקה'); state.shuffle = true; playQueue(s, Math.floor(Math.random() * s.length)); toast('מנגן אקראי'); });
+$('plRename').addEventListener('click', () => {
+  if (openPlKind !== 'pl') return toast('אי אפשר לשנות שם כאן');
+  const nn = (prompt('שם חדש לרשימה:', openPlName) || '').trim();
+  if (!nn || nn === openPlName) return;
+  if (state.playlists[nn]) return toast('כבר יש רשימה בשם הזה');
+  state.playlists[nn] = state.playlists[openPlName];
+  delete state.playlists[openPlName];
+  openPlName = nn; save(); openLocalPlaylist(nn);
+});
+$('plDelete').addEventListener('click', () => {
+  if (openPlKind !== 'pl') return toast('אי אפשר למחוק כאן');
+  if (!confirm(`למחוק את הרשימה "${openPlName}"?`)) return;
+  delete state.playlists[openPlName];
+  save(); closePage('page-playlist'); renderLibrary();
+});
+
+/* ---------- דף אלבום ---------- */
+let alCur = null, alTracks = [];
+async function openAlbum(a) {
+  alCur = a;
+  $('alArt').src = a.thumb || '';
+  $('alTitle').textContent = a.title;
+  $('alArtist').textContent = a.artistName || '';
+  $('alMeta').textContent = a.sub || '';
+  $('alTracks').innerHTML = '<div class="empty"><p>טוען...</p></div>';
+  openPage('page-album');
+  try {
+    const j = await pipedFetch('/playlists/' + a.plId, 9000);
+    alTracks = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
+    if (j.name) $('alTitle').textContent = j.name;
+    if (j.uploader) { $('alArtist').textContent = j.uploader; $('alArtist').classList.add('link'); }
+    $('alMeta').textContent = alTracks.length + ' שירים';
+    const box = $('alTracks'); box.innerHTML = '';
+    alTracks.forEach((t, i) => box.appendChild(trackRow(t, {
+      num: i + 1, noArt: true,
+      onPlay: () => playQueue(alTracks, i),
+    })));
+  } catch { $('alTracks').innerHTML = '<div class="empty"><p>לא הצלחתי לטעון את האלבום כרגע</p></div>'; }
+}
+$('alArtist').addEventListener('click', () => {
+  const name = $('alArtist').textContent;
+  if (name) { searchArtistAndOpen(name); }
+});
+$('alPlay').addEventListener('click', () => { if (alTracks.length) playQueue(alTracks, 0); });
+$('alShuffle').addEventListener('click', () => { if (!alTracks.length) return; state.shuffle = true; playQueue(alTracks, Math.floor(Math.random() * alTracks.length)); });
+
+/* ---------- ספריה: אמנים ואלבומים שמורים ---------- */
+function openLibArtists() {
+  const box = $('resBody');
+  switchTab('search');
+  $('searchHome').classList.add('hidden');
+  $('searchRes').classList.remove('hidden');
+  $('pills').innerHTML = '';
+  box.innerHTML = '<h2 class="secttl">האמנים שלי</h2>';
+  const entries = Object.entries(state.favArtists);
+  if (!entries.length) { box.innerHTML += '<div class="empty"><p>עוד לא שמרת אמנים. פתח דף אמן ולחץ על הכוכב.</p></div>'; return; }
+  entries.forEach(([chId, a]) => box.appendChild(artistHit({ chId, name: a.name, avatar: a.avatar })));
+}
+function openLibAlbums() {
+  const box = $('resBody');
+  switchTab('search');
+  $('searchHome').classList.add('hidden');
+  $('searchRes').classList.remove('hidden');
+  $('pills').innerHTML = '';
+  box.innerHTML = '<h2 class="secttl">האלבומים שלי</h2>';
+  const entries = Object.values(state.albums);
+  if (!entries.length) { box.innerHTML += '<div class="empty"><p>עוד לא שמרת אלבומים.</p></div>'; return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'hscroll';
+  entries.forEach(a => wrap.appendChild(albumCardEl(a)));
+  box.appendChild(wrap);
+}
+
+/* ---------- חיפוש ---------- */
+const CATS = [
+  ['מזרחית', 'linear-gradient(135deg,#fa2d48,#8f0e28)', 'מוזיקה מזרחית'],
+  ['ישראלי', 'linear-gradient(135deg,#0a84ff,#0b3d91)', 'מוזיקה ישראלית'],
+  ['ערבית', 'linear-gradient(135deg,#30d158,#0f6e2c)', 'اغاني عربية'],
+  ['מוזיקה עולמית', 'linear-gradient(135deg,#bf5af2,#5e2a84)', 'world music hits'],
+  ['פופ', 'linear-gradient(135deg,#ff9f0a,#c93400)', 'pop hits'],
+  ['רגוע', 'linear-gradient(135deg,#64d2ff,#2a5a8f)', 'שירים רגועים'],
+  ['חתונות ואירועים', 'linear-gradient(135deg,#ff6961,#8f1d1d)', 'שירי חתונה ישראלים'],
+  ['להיטי ילדים', 'linear-gradient(135deg,#ffd60a,#c78a00)', 'שירי ילדים'],
+];
+(function buildCats() {
+  const g = $('catGrid');
+  CATS.forEach(([name, color, q]) => {
+    const el = document.createElement('div');
+    el.className = 'cat';
+    el.style.background = color;
+    const sp = document.createElement('span');
+    sp.textContent = name;
+    el.appendChild(sp);
+    el.addEventListener('click', () => {
+      switchTab('search');
+      $('searchInput').value = q;
+      runSearch(q, 'songs');
+    });
+    g.appendChild(el);
+  });
+})();
+
+const PILLS = [['top', 'תוצאות מובילות'], ['songs', 'שירים'], ['artists', 'אמנים'], ['albums', 'אלבומים']];
+let curPill = 'top', lastQuery = '';
+(function buildPills() {
+  const box = $('pills');
+  PILLS.forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.className = 'pill' + (key === curPill ? ' on' : '');
+    b.textContent = label;
+    b.dataset.pill = key;
+    b.addEventListener('click', () => {
+      curPill = key;
+      box.querySelectorAll('.pill').forEach(p => p.classList.toggle('on', p === b));
+      if (lastQuery) runSearch(lastQuery, key);
+    });
+    box.appendChild(b);
+  });
+})();
+
+let searchTimer = null, searchSeq = 0;
+const input = $('searchInput');
+input.addEventListener('input', () => {
+  $('clearSearch').classList.toggle('hidden', !input.value);
+  clearTimeout(searchTimer);
+  const q = input.value.trim();
+  if (!q) { $('searchHome').classList.remove('hidden'); $('searchRes').classList.add('hidden'); hideNetNote(); return; }
+  searchTimer = setTimeout(() => runSearch(q, curPill), 450);
+});
+input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(input.value.trim(), curPill); } });
+$('clearSearch').addEventListener('click', () => { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); });
+
+async function runSearch(q, pill) {
+  if (!q) return;
+  lastQuery = q;
+  switchTab('search');
+  $('searchHome').classList.add('hidden');
+  $('searchRes').classList.remove('hidden');
+  const vid = vidFromUrl(q);
+  const seq = ++searchSeq;
+  const box = $('resBody');
+  box.innerHTML = '<div class="empty"><p>מחפש...</p></div>';
+  if (vid) {
+    const t = { id: vid, title: 'שיר מיוטיוב', artist: '', dur: 0 };
+    box.innerHTML = '';
+    box.appendChild(trackRow(t, { onPlay: () => playQueue([t], 0) }));
+    enrichTitle(t);
+    return;
+  }
+  try {
+    if (pill === 'artists') {
+      const chans = await searchChannels(q);
+      if (seq !== searchSeq) return;
+      hideNetNote();
+      box.innerHTML = chans.length ? '' : '<div class="empty"><p>לא נמצאו אמנים.</p></div>';
+      chans.forEach(c => box.appendChild(artistHit(c)));
+      return;
+    }
+    if (pill === 'albums') {
+      const albs = await searchPlaylists(q, 'music_albums');
+      if (seq !== searchSeq) return;
+      hideNetNote();
+      box.innerHTML = '';
+      if (!albs.length) { box.innerHTML = '<div class="empty"><p>לא נמצאו אלבומים.</p></div>'; return; }
+      const wrap = document.createElement('div');
+      wrap.className = 'hscroll';
+      albs.slice(0, 15).forEach(a => wrap.appendChild(albumCardEl(a)));
+      box.appendChild(wrap);
+      return;
+    }
+    // top / songs
+    const jobs = { songs: searchMusic(q) };
+    if (pill === 'top') { jobs.artists = searchChannels(q); jobs.albums = searchPlaylists(q, 'music_albums'); }
+    const res = {};
+    await Promise.all(Object.entries(jobs).map(async ([k, p]) => { try { res[k] = await p; } catch { res[k] = []; } }));
+    if (seq !== searchSeq) return;
+    hideNetNote();
+    box.innerHTML = '';
+    const songs = res.songs || [];
+    if (pill === 'top' && res.artists && res.artists.length) box.appendChild(artistHit(res.artists[0]));
+    if (songs.length) {
+      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'שירים';
+      box.appendChild(h);
+      songs.slice(0, 20).forEach((t, i) => box.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
+    }
+    if (pill === 'top' && res.albums && res.albums.length) {
+      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'אלבומים';
+      box.appendChild(h);
+      const wrap = document.createElement('div');
+      wrap.className = 'hscroll';
+      res.albums.slice(0, 10).forEach(a => wrap.appendChild(albumCardEl(a)));
+      box.appendChild(wrap);
+    }
+    if (!box.children.length) box.innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>';
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    box.innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע.</p><p class="dim">אפשר תמיד להדביק כאן קישור של שיר מיוטיוב ולנגן ישירות.</p></div>';
+    showNetNote('שירות החיפוש החיצוני לא עונה כרגע.');
+  }
+}
+async function enrichTitle(t) {
+  try {
+    const j = await pipedFetch('/streams/' + t.id, 7000);
+    if (j && j.title) { t.title = j.title; t.artist = j.uploader || ''; t.dur = j.duration || 0; t.ch = chFromUrl(j.uploaderUrl) || t.ch || ''; save(); paintPlayingRows(); paintNow(); }
+  } catch {}
+}
+
+/* ---------- דף אמן ---------- */
+let aSongs = [], aSeq = 0, aCur = null;
 async function openArtist(chId, name, avatar) {
   const seq = ++aSeq;
-  $('artistSheet').classList.remove('hidden');
-  document.body.classList.add('noscroll');
+  aCur = { chId, name, avatar };
+  openPage('page-artist');
   $('aName').textContent = name || 'אמן';
-  $('aSubs').textContent = '';
-  $('aAvatar').src = avatar || '';
   $('aBanner').style.backgroundImage = avatar ? `url("${avatar}")` : '';
   $('aBody').innerHTML = '<div class="empty"><p>טוען...</p></div>';
-  $('artistSheet').querySelector('.ascroll').scrollTop = 0;
+  $('page-artist').querySelector('.ascroll').scrollTop = 0;
+  setIcon($('aFav'), state.favArtists[chId] ? 'star-fill' : 'star');
+  $('aFav').classList.toggle('on', !!state.favArtists[chId]);
 
   let channel = null, songs = [], albums = [], videos = [];
   try { channel = await pipedFetch('/channel/' + chId, 8000); } catch {}
   if (seq !== aSeq) return;
   if (channel && !channel.error) {
-    if (channel.name) $('aName').textContent = channel.name;
-    if (channel.avatarUrl) $('aAvatar').src = channel.avatarUrl;
+    if (channel.name) { $('aName').textContent = channel.name; aCur.name = channel.name; }
+    if (channel.avatarUrl) aCur.avatar = channel.avatarUrl;
     const bn = channel.bannerUrl || channel.avatarUrl;
     if (bn) $('aBanner').style.backgroundImage = `url("${bn}")`;
-    $('aSubs').textContent = fmtSubs(channel.subscriberCount);
     songs = (channel.relatedStreams || [])
       .filter(s => s.url && s.type === 'stream')
       .map(mapStream).filter(t => t.id).slice(0, 10);
   }
   const jobs = [];
-  jobs.push((async () => {
-    if (songs.length) return;
-    try { songs = (await searchMusic(name)).slice(0, 10); } catch {}
-  })());
+  jobs.push((async () => { if (!songs.length) { try { songs = (await searchMusic(name)).slice(0, 10); } catch {} } })());
   jobs.push((async () => {
     if (channel && Array.isArray(channel.tabs)) {
       const rel = channel.tabs.find(t => /releases/i.test(t.name || ''));
@@ -809,10 +1174,7 @@ async function openArtist(chId, name, avatar) {
         } catch {}
       }
     }
-    try {
-      const j = await pipedFetch('/search?q=' + encodeURIComponent(name) + '&filter=music_albums', 8000);
-      albums = (j.items || []).filter(x => x.type === 'playlist' && x.url).map(mapAlbum).filter(a => a.plId);
-    } catch {}
+    try { albums = await searchPlaylists(name, 'music_albums'); } catch {}
   })());
   jobs.push((async () => {
     try {
@@ -824,84 +1186,78 @@ async function openArtist(chId, name, avatar) {
   if (seq !== aSeq) return;
   renderArtistBody(songs, albums, videos);
 }
-
-function mapAlbum(x) {
-  const m = String(x.url || '').match(/list=([A-Za-z0-9_-]+)/);
-  return {
-    plId: m ? m[1] : '',
-    title: x.name || x.title || '',
-    thumb: x.thumbnail || '',
-    sub: x.videos > 0 ? x.videos + ' שירים' : (x.uploaderName || ''),
-  };
+async function searchArtistAndOpen(name) {
+  try {
+    const chans = await searchChannels(name);
+    if (chans.length) return openArtist(chans[0].chId, chans[0].name, chans[0].avatar);
+  } catch {}
+  toast('לא מצאתי את דף האמן');
 }
-
 function renderArtistBody(songs, albums, videos) {
   const box = $('aBody'); box.innerHTML = '';
   aSongs = songs;
+  if (albums.length) {
+    const latest = albums[0];
+    const lc = document.createElement('div');
+    lc.className = 'latestcard';
+    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">יצירה אחרונה</div><div class="lc-t"></div><div class="lc-s dim"></div></div>`;
+    lc.querySelector('.lc-t').textContent = latest.title;
+    lc.querySelector('.lc-s').textContent = latest.sub;
+    lc.addEventListener('click', () => openAlbum(latest));
+    box.appendChild(lc);
+  }
   if (songs.length) {
-    const { sec, body } = aSection('שירים מובילים');
-    body.classList.add('list');
-    songs.forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i), onAdd: true })));
+    const { sec, body } = sectionEl('שירים מובילים');
+    songs.forEach((t, i) => body.appendChild(trackRow(t, { onPlay: () => playQueue(songs, i) })));
     box.appendChild(sec);
   }
   if (albums.length) {
-    const { sec, body } = aSection('אלבומים');
-    body.classList.add('hscroll');
-    albums.slice(0, 12).forEach(a => body.appendChild(albumCard(a)));
+    const { sec, body } = sectionEl('אלבומים', 'hscroll');
+    albums.slice(0, 12).forEach(a => body.appendChild(albumCardEl(a)));
     box.appendChild(sec);
   }
   if (videos.length) {
-    const { sec, body } = aSection('קליפים');
-    body.classList.add('hscroll');
-    videos.forEach(v => body.appendChild(videoCard(v)));
+    const { sec, body } = sectionEl('קליפים', 'hscroll');
+    videos.forEach(v => {
+      const el = document.createElement('div');
+      el.className = 'card vid';
+      el.innerHTML = `<img loading="lazy" src="${thumb(v.id)}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
+      el.querySelector('.ct').textContent = v.title;
+      el.querySelector('.cs').textContent = v.dur ? fmt(v.dur) : '';
+      el.addEventListener('click', () => {
+        playQueue([v], 0);
+        videoMode = true;
+        document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x.dataset.mode === 'video'));
+        document.body.classList.add('vid');
+        openPlayer();
+      });
+      body.appendChild(el);
+    });
     box.appendChild(sec);
   }
   if (!songs.length && !albums.length && !videos.length)
     box.innerHTML = '<div class="empty"><p>לא נמצא תוכן לאמן הזה כרגע.</p></div>';
 }
-
-function albumCard(a) {
-  const el = document.createElement('div');
-  el.className = 'card sq';
-  el.innerHTML = `<img loading="lazy" src="${a.thumb}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
-  el.querySelector('.ct').textContent = a.title;
-  el.querySelector('.cs').textContent = a.sub;
-  el.addEventListener('click', () => playAlbum(a));
-  return el;
-}
-
-function videoCard(v) {
-  const el = document.createElement('div');
-  el.className = 'card';
-  el.innerHTML = `<img loading="lazy" src="${thumb(v.id)}" alt=""><div class="ct"></div><div class="cs dim"></div>`;
-  el.querySelector('.ct').textContent = v.title;
-  el.querySelector('.cs').textContent = v.dur ? fmt(v.dur) : '';
-  el.addEventListener('click', () => {
-    playQueue([v], 0);
-    // straight into video mode, like tapping a clip in YouTube Music
-    videoMode = true;
-    document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x.dataset.mode === 'video'));
-    document.body.classList.add('vid'); $('ytwrap').classList.add('vid');
-    $('sheet').classList.add('open'); $('scrim').classList.add('on');
-  });
-  return el;
-}
-
-async function playAlbum(a) {
-  toast('טוען את האלבום...');
-  try {
-    const j = await pipedFetch('/playlists/' + a.plId, 9000);
-    const tracks = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).filter(t => t.id);
-    if (!tracks.length) throw new Error('empty');
-    playQueue(tracks, 0);
-    toast(`מנגן את "${a.title}" 🎵`);
-  } catch { toast('לא הצלחתי לטעון את האלבום כרגע'); }
-}
-
-$('aClose').addEventListener('click', () => { ++aSeq; $('artistSheet').classList.add('hidden'); document.body.classList.remove('noscroll'); });
-$('aPlay').addEventListener('click', () => { if (aSongs.length) playQueue(aSongs, 0); else toast('אין שירים לנגן עדיין'); });
-$('aShuffle').addEventListener('click', () => {
-  if (!aSongs.length) return toast('אין שירים לנגן עדיין');
-  state.shuffle = true; playQueue(aSongs, Math.floor(Math.random() * aSongs.length)); toast('מנגן אקראי 🔀');
+$('aPlay').addEventListener('click', () => { if (aSongs.length) playQueue(aSongs, 0, { station: { seed: aSongs[0].id, name: aCur ? aCur.name : '' } }); else toast('אין שירים לנגן עדיין'); });
+$('aFav').addEventListener('click', () => {
+  if (!aCur || !aCur.chId) return;
+  if (state.favArtists[aCur.chId]) { delete state.favArtists[aCur.chId]; toast('הוסר מהאמנים שלך'); }
+  else { state.favArtists[aCur.chId] = { name: aCur.name, avatar: aCur.avatar || '' }; toast('נשמר בספריה ★'); }
+  save();
+  setIcon($('aFav'), state.favArtists[aCur.chId] ? 'star-fill' : 'star');
+  $('aFav').classList.toggle('on', !!state.favArtists[aCur.chId]);
 });
-$('pArtist').addEventListener('click', () => { const t = current(); if (t && t.ch) openArtist(t.ch, t.artist, ''); });
+$('aDots').addEventListener('click', () => {
+  if (!aCur) return;
+  if (state.favArtists[aCur.chId]) { delete state.favArtists[aCur.chId]; save(); toast('הוסר מהספריה'); setIcon($('aFav'), 'star'); $('aFav').classList.remove('on'); }
+  else { state.favArtists[aCur.chId] = { name: aCur.name, avatar: aCur.avatar || '' }; save(); toast('נשמר בספריה ★'); setIcon($('aFav'), 'star-fill'); $('aFav').classList.add('on'); }
+});
+
+/* ---------- keep UI in sync when tab hidden ---------- */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && current()) syncPlayUI(ytReady ? yt.getPlayerState() !== YT.PlayerState.PLAYING : true);
+});
+
+/* ---------- init ---------- */
+renderListen();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

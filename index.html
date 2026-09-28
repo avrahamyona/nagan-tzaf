@@ -3,200 +3,267 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="נגן צף">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="מוזיקה">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png?v=10">
-<link rel="apple-touch-icon" href="icon-180.png?v=10">
-<title>נגן צף</title>
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="icon" type="image/png" href="icon-192.png?v=11">
+<link rel="apple-touch-icon" href="icon-180.png?v=11">
+<title>מוזיקה</title>
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
 <svg width="0" height="0" style="position:absolute">
   <defs>
-    <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.2 4.2a1.05 1.05 0 0 0 1.5-1.5l-4.2-4.2A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></symbol>
-    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18.5A2.75 2.75 0 1 1 6.25 15.8c.34 0 .66.05.95.15V6.4c0-.6.4-1.13.98-1.29l9-2.4A1.3 1.3 0 0 1 18.8 4v11.7a2.75 2.75 0 1 1-1.8-2.6V7.1l-7.8 2.1v9.3z"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.2 4.9c0-1.2 1.3-1.9 2.3-1.3l10.6 7.1c.9.6.9 2 0 2.6L9.5 20.4c-1 .7-2.3-.1-2.3-1.3V4.9z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6.5 4h2.6c.5 0 .9.4.9.9v14.2c0 .5-.4.9-.9.9H6.5c-.5 0-.9-.4-.9-.9V4.9c0-.5.4-.9.9-.9zm8.4 0h2.6c.5 0 .9.4.9.9v14.2c0 .5-.4.9-.9.9h-2.6c-.5 0-.9-.4-.9-.9V4.9c0-.5.4-.9.9-.9z"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path d="M4.2 5.6c0-1.1 1.2-1.8 2.1-1.2l7.9 5.3V5.4c0-.6.5-1.1 1.1-1.1h1.6c.6 0 1.1.5 1.1 1.1v13.2c0 .6-.5 1.1-1.1 1.1h-1.6c-.6 0-1.1-.5-1.1-1.1v-4.3l-7.9 5.3c-.9.6-2.1-.1-2.1-1.2V5.6z"/></symbol>
-    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19.8 5.6c0-1.1-1.2-1.8-2.1-1.2l-7.9 5.3V5.4c0-.6-.5-1.1-1.1-1.1H7.1c-.6 0-1.1.5-1.1 1.1v13.2c0 .6.5 1.1 1.1 1.1h1.6c.6 0 1.1-.5 1.1-1.1v-4.3l7.9 5.3c.9.6 2.1-.1 2.1-1.2V5.6z"/></symbol>
-    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16.9 3.5c-.5-.5-1.4-.1-1.4.6v1.3h-1.3c-2.4 0-4.2 1.1-5.5 3.1l-1.7 2.6c-1 1.5-2.2 2.3-4 2.3H2.7c-.8 0-1.2.9-.6 1.4.2.2.5.3.8.3h.1c2.4 0 4.2-1.1 5.5-3.1l1.7-2.6c1-1.5 2.2-2.3 4-2.3h1.3v1.3c0 .7.9 1.1 1.4.6l3.4-3.3c.3-.3.3-.8 0-1.1l-3.4-3.1zm-9 7.2c.3.2.5.5.7.8l1.1 1.7c-.5.7-1.1 1.3-1.8 1.8l-1.2-1.8c.4-.7.8-1.3 1.2-2.5zm13.1 6.6-3.4-3.3c-.5-.5-1.4-.1-1.4.6v1.3h-1.3c-1 0-1.9-.3-2.6-.9l-1.3 1.9c1.1.9 2.4 1.4 3.9 1.4h1.3v1.3c0 .7.9 1.1 1.4.6l3.4-3.3c.3-.3.3-.8 0-1.1v1.5z"/></symbol>
-    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M18.3 8.5v5c0 1.5-1.2 2.7-2.7 2.7H7.9v-1.3c0-.7-.9-1.1-1.4-.6L3.1 17.6c-.3.3-.3.8 0 1.1l3.4 3.3c.5.5 1.4.1 1.4-.6v-1.3h8.7c2 0 3.7-1.7 3.7-3.7v-7.9h-2zm-14.6 7v-5c0-1.5 1.2-2.7 2.7-2.7h7.7v1.3c0 .7.9 1.1 1.4.6l3.4-3.3c.3-.3.3-.8 0-1.1L15.5 2c-.5-.5-1.4-.1-1.4.6v1.3H5.4c-2 0-3.7 1.7-3.7 3.7v7.9h2z"/></symbol>
-    <symbol id="i-repeat1" viewBox="0 0 24 24"><path d="M18.3 8.5v5c0 1.5-1.2 2.7-2.7 2.7H7.9v-1.3c0-.7-.9-1.1-1.4-.6L3.1 17.6c-.3.3-.3.8 0 1.1l3.4 3.3c.5.5 1.4.1 1.4-.6v-1.3h8.7c2 0 3.7-1.7 3.7-3.7v-7.9h-2zm-14.6 7v-5c0-1.5 1.2-2.7 2.7-2.7h7.7v1.3c0 .7.9 1.1 1.4.6l3.4-3.3c.3-.3.3-.8 0-1.1L15.5 2c-.5-.5-1.4-.1-1.4.6v1.3H5.4c-2 0-3.7 1.7-3.7 3.7v7.9h2zM12 9.2c.6 0 1.1.2 1.5.6.4.4.6.9.6 1.5v1.4c0 .6-.2 1.1-.6 1.5-.4.4-.9.6-1.5.6s-1.1-.2-1.5-.6c-.4-.4-.6-.9-.6-1.5v-1.4c0-.6.2-1.1.6-1.5.4-.4.9-.6 1.5-.6zm0 1.3c-.2 0-.4.1-.5.2-.1.1-.2.3-.2.5v1.5c0 .2.1.4.2.5.1.1.3.2.5.2s.4-.1.5-.2c.1-.1.2-.3.2-.5v-1.5c0-.2-.1-.4-.2-.5-.1-.1-.3-.2-.5-.2z"/></symbol>
-    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4.5c.5 0 .9.4.9.9v5.7h5.7c.5 0 .9.4.9.9s-.4.9-.9.9h-5.7v5.7c0 .5-.4.9-.9.9s-.9-.4-.9-.9v-5.7H5.4c-.5 0-.9-.4-.9-.9s.4-.9.9-.9h5.7V5.4c0-.5.4-.9.9-.9z"/></symbol>
-    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.8 5.2c.4.4.4 1 0 1.4L9.6 11.8l5.2 5.2c.4.4.4 1 0 1.4s-1 .4-1.4 0l-5.9-5.9c-.4-.4-.4-1 0-1.4l5.9-5.9c.4-.4 1-.4 1.4 0z"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M9 4.5V4c0-.6.4-1 1-1h4c.6 0 1 .4 1 1v.5h3.2c.5 0 .8.3.8.8s-.3.8-.8.8h-.6l-.8 12.3c-.1 1.4-1.2 2.4-2.6 2.4H8.9c-1.4 0-2.5-1-2.6-2.4L5.5 6h-.6c-.5 0-.8-.3-.8-.8s.3-.8.8-.8H9zm1.8 0h2.4v-.5h-2.4v.5zM10 9.3v7.2c0 .4-.3.7-.7.7s-.7-.3-.7-.7V9.3c0-.4.3-.7.7-.7s.7.3.7.7zm4.7 0v7.2c0 .4-.3.7-.7.7s-.7-.3-.7-.7V9.3c0-.4.3-.7.7-.7s.7.3.7.7z"/></symbol>
-    <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.2v6.4a3.5 3.5 0 0 0 2-3.2z"/></symbol>
-    <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM13.2 17.4h-2.4v-6h2.4v6z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19.8 5.6c0-1.1-1.2-1.8-2.1-1.2l-7.9 5.3V5.4c0-.6-.5-1.1-1.1-1.1H7.1c-.6 0-1.1.5-1.1 1.1v13.2c0 .6.5 1.1 1.1 1.1h1.6c.6 0 1.1-.5 1.1-1.1v-4.3l7.9 5.3c.9.6-2.1-.1-2.1-1.2V5.6z"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M16 3.5h4.5V8M3.5 20.5 20.5 3.5M16 20.5h4.5V16M3.5 3.5l5 5"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M17 2.5 21 6.5l-4 4M3 11.5v-1a4 4 0 0 1 4-4h14M7 21.5l-4-4 4-4M21 12.5v1a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-repeat1" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M17 2.5 21 6.5l-4 4M3 11.5v-1a4 4 0 0 1 4-4h14M7 21.5l-4-4 4-4M21 12.5v1a4 4 0 0 1-4 4H3"/><path fill="currentColor" d="M11.2 10h1.4v5h-1.3v-3.6h-1.1z"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M5.2 8.8c.4-.4 1-.4 1.4 0l5.4 5.2 5.4-5.2c.4-.4 1-.4 1.4 0s.4 1 0 1.4l-6.1 5.9c-.4.4-1 .4-1.4 0L5.2 10.2c-.4-.4-.4-1 0-1.4z"/></symbol>
+    <symbol id="i-chev-back" viewBox="0 0 24 24"><path d="M9.2 5.2c.4.4.4 1 0 1.4L6.6 9.2h11.6c.6 0 1 .4 1 1s-.4 1-1 1H6.6l2.6 2.6c.4.4.4 1 0 1.4s-1 .4-1.4 0l-4.3-4.3c-.4-.4-.4-1 0-1.4l4.3-4.3c.4-.4 1-.4 1.4 0z"/></symbol>
+    <symbol id="i-chev-fwd" viewBox="0 0 24 24"><path d="M14.8 5.2c.4.4.4 1 0 1.4l-5.9 5.9 5.9 5.9c.4.4.4 1 0 1.4s-1 .4-1.4 0l-6.6-6.6c-.4-.4-.4-1 0-1.4l6.6-6.6c.4-.4 1-.4 1.4 0z"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.7 5.3c.4-.4 1-.4 1.4 0l3.9 3.9 3.9-3.9c.4-.4 1-.4 1.4 0s.4 1 0 1.4L13.4 12l3.9 3.9c.4.4.4 1 0 1.4s-1 .4-1.4 0L12 13.4l-3.9 3.9c-.4.4-1 .4-1.4 0s-.4-1 0-1.4l3.9-3.9-3.9-3.9c-.4-.4-.4-1 0-1.4z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.2 4.2a1.05 1.05 0 0 0 1.5-1.5l-4.2-4.2A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
+    <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M9.6 16.2 5.4 12c-.4-.4-1-.4-1.4 0s-.4 1 0 1.4l4.9 4.9c.4.4 1 .4 1.4 0L20.9 7.6c.4-.4.4-1 0-1.4s-1-.4-1.4 0L9.6 16.2z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4.5c.5 0 .9.4.9.9v5.7h5.7c.5 0 .9.4.9.9s-.4.9-.9.9h-5.7v5.7c0 .5-.4.9-.9.9s-.9-.4-.9-.9v-5.7H5.4c-.5 0-.9-.4-.9-.9s.4-.9.9-.9h5.7V5.4c0-.5.4-.9.9-.9z"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M3.5 6.5h17M3.5 12h10M3.5 17.5h10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M17 11.5v7.4a2 2 0 1 1-1.5-1.9v-4.7l5-1.3v5.4a2 2 0 1 1-1.5-1.9v-3.4z"/></symbol>
+    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M5 3.5h14c1.4 0 2.5 1.1 2.5 2.5v9c0 1.4-1.1 2.5-2.5 2.5H11l-4.2 3.3c-.6.4-1.3 0-1.3-.7v-2.6H5A2.5 2.5 0 0 1 2.5 15V6C2.5 4.1 3.6 3.5 5 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 12.6a1.6 1.6 0 1 1-1.2-1.9V7.5l4-1v3.6a1.6 1.6 0 1 1-1.2-1.9V8.8l-1.6.4z" fill="currentColor"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8.5 6.5 12 3l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10.5H5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-back10" viewBox="0 0 24 24"><path d="M12 5V2.3L7.5 5.9 12 9.5V7a5.5 5.5 0 1 1-5.4 6.7l-2 .4A7.5 7.5 0 1 0 12 5z"/><text x="9" y="16" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">10</text></symbol>
+    <symbol id="i-fwd10" viewBox="0 0 24 24"><path d="M12 5V2.3l4.5 3.6L12 9.5V7a5.5 5.5 0 1 0 5.4 6.7l2 .4A7.5 7.5 0 1 1 12 5z"/><text x="9" y="16" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">10</text></symbol>
+    <!-- tab icons -->
+    <symbol id="i-tab-listen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" d="M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6z"/><path d="M9.8 8.3c0-.7.8-1.2 1.4-.8l4.9 3.3c.5.4.5 1.2 0 1.6l-4.9 3.3c-.6.4-1.4-.1-1.4-.8V8.3z"/></symbol>
+    <symbol id="i-tab-browse" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+    <symbol id="i-tab-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.5 18.5a9.3 9.3 0 0 1 0-13M18.5 5.5a9.3 9.3 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-tab-library" viewBox="0 0 24 24"><path d="M5 20.5V4.8c0-.5.3-1 .8-1.1l8-1.9c.7-.2 1.2.3 1.2 1v13.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="4" cy="18.5" r="2.3" fill="currentColor" transform="translate(1)"/><circle cx="14" cy="17.5" r="2.3" fill="currentColor" transform="translate(1)"/></symbol>
+    <symbol id="i-tab-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.6 13.4l4.2 4.2a1.05 1.05 0 0 0 1.5-1.5l-4.2-4.2A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18.5A2.75 2.75 0 1 1 6.25 15.8c.34 0 .66.05.95.15V6.4c0-.6.4-1.13.98-1.29l9-2.4A1.3 1.3 0 0 1 18.8 4v11.7a2.75 2.75 0 1 1-1.8-2.6V7.1l-7.8 2.1v9.3z"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 10.5 5-3v9l-5-3z" fill="currentColor"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M9 4.5V4c0-.6.4-1 1-1h4c.6 0 1 .4 1 1v.5h3.2c.5 0 .8.3.8.8s-.3.8-.8.8h-.6l-.8 12.3c-.1 1.4-1.2 2.4-2.6 2.4H8.9c-1.4 0-2.5-1-2.6-2.4L5.5 6h-.6c-.5 0-.8-.3-.8-.8s.3-.8.8-.8H9zm1.8 0h2.4v-.5h-2.4v.5z"/></symbol>
   </defs>
 </svg>
 
+<div id="app">
 <main id="main">
 
-  <section id="view-search" class="view on">
+  <!-- ============ האזנה ============ -->
+  <section id="view-listen" class="view on">
+    <h1 class="largetitle">האזנה</h1>
+    <div id="listenBody"></div>
+  </section>
+
+  <!-- ============ עיון ============ -->
+  <section id="view-browse" class="view">
+    <h1 class="largetitle">עיון</h1>
+    <div id="browseBody"></div>
+  </section>
+
+  <!-- ============ רדיו ============ -->
+  <section id="view-radio" class="view">
+    <h1 class="largetitle">רדיו</h1>
+    <div id="radioBody"></div>
+  </section>
+
+  <!-- ============ ספריה ============ -->
+  <section id="view-library" class="view">
+    <h1 class="largetitle">ספריה</h1>
+    <div id="libRows" class="librows"></div>
+    <div class="sechead"><h2>רשימות</h2><button id="newPl" class="addpl"><svg><use href="#i-plus"/></svg></button></div>
+    <div id="libPls" class="list"></div>
+  </section>
+
+  <!-- ============ חיפוש ============ -->
+  <section id="view-search" class="view">
     <h1 class="largetitle">חיפוש</h1>
     <div class="searchbox">
       <svg class="sicon"><use href="#i-search"/></svg>
       <input id="searchInput" type="search" inputmode="search" enterkeyhint="search"
-        placeholder="שירים, אמנים, או קישור יוטיוב" autocomplete="off">
+        placeholder="אמנים, שירים, מילים ועוד" autocomplete="off">
       <button id="clearSearch" class="xbtn hidden" aria-label="נקה"><svg><use href="#i-x"/></svg></button>
     </div>
-    <div class="seg" id="segMode">
-      <button class="segb on" data-mode="songs">שירים</button>
-      <button class="segb" data-mode="artists">אמנים</button>
+    <div id="searchHome">
+      <h2 class="secttl">עיון לפי קטגוריה</h2>
+      <div id="catGrid" class="catgrid"></div>
     </div>
-    <div id="netNote" class="netnote hidden"></div>
-    <div id="homeHint" class="empty">
-      <div class="big">🎵</div>
-      <h2>מה בא לך לשמוע?</h2>
-      <p>חפש שיר או זמר, או הדבק קישור של יוטיוב - ונתחיל לנגן.</p>
-      <p class="dim">הרשימות נשמרות אצלך במכשיר · נגינה ברקע</p>
-    </div>
-    <div id="results" class="list"></div>
-  </section>
-
-  <section id="view-playlists" class="view">
-    <h1 class="largetitle">ספריה</h1>
-    <div id="playlists" class="list"></div>
-    <div class="rowbtns">
-      <button id="newPlaylistBtn" class="textbtn"><svg><use href="#i-plus"/></svg> רשימה חדשה</button>
+    <div id="searchRes" class="hidden">
+      <div id="pills" class="pills"></div>
+      <div id="resBody"></div>
     </div>
   </section>
 
-  <section id="view-playlist" class="view">
-    <div class="pl-nav">
-      <button id="plBack" class="iconbtn" aria-label="חזרה"><svg><use href="#i-chev"/></svg></button>
-      <div class="pl-navbtns">
-        <button id="plRename" class="iconbtn" title="שנה שם">✏️</button>
-        <button id="plDelete" class="iconbtn" title="מחק רשימה"><svg><use href="#i-trash"/></svg></button>
+  <!-- ============ דף אמן ============ -->
+  <section id="page-artist" class="page">
+    <div class="ascroll">
+      <div class="ahero">
+        <div id="aBanner" class="abanner"></div>
+        <div class="ahero-fade"></div>
+        <button class="pageback" data-close="page-artist"><svg><use href="#i-chev-back"/></svg></button>
+        <button id="aDots" class="icircle herodots"><svg><use href="#i-dots"/></svg></button>
+        <div class="ahero-meta">
+          <h1 id="aName" class="aname"></h1>
+          <div class="abtns">
+            <button id="aInfo" class="icircle"><svg><use href="#i-dots"/></svg></button>
+            <button id="aPlay" class="icircle big white"><svg><use href="#i-play"/></svg></button>
+            <button id="aFav" class="icircle"><svg><use href="#i-star"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div id="aBody"></div>
+    </div>
+  </section>
+
+  <!-- ============ דף אלבום ============ -->
+  <section id="page-album" class="page">
+    <div class="ascroll">
+      <button class="pageback" data-close="page-album"><svg><use href="#i-chev-back"/></svg></button>
+      <div class="albumhead">
+        <img id="alArt" class="albumart" alt="">
+        <h1 id="alTitle" class="pttl"></h1>
+        <div id="alArtist" class="psub link"></div>
+        <div id="alMeta" class="pmeta"></div>
+        <div class="playpair">
+          <button id="alPlay" class="ppill"><svg><use href="#i-play"/></svg>נגן</button>
+          <button id="alShuffle" class="ppill"><svg><use href="#i-shuffle"/></svg>ערבוב</button>
+        </div>
+      </div>
+      <div id="alTracks" class="tracklist"></div>
+    </div>
+  </section>
+
+  <!-- ============ דף פלייליסט ============ -->
+  <section id="page-playlist" class="page">
+    <div class="ascroll">
+      <button class="pageback" data-close="page-playlist"><svg><use href="#i-chev-back"/></svg></button>
+      <div class="albumhead">
+        <div id="plArt" class="albumart plart"></div>
+        <h1 id="plTitle" class="pttl"></h1>
+        <div id="plOwner" class="psub"></div>
+        <div id="plMeta" class="pmeta"></div>
+        <div class="playpair">
+          <button id="plPlay" class="ppill"><svg><use href="#i-play"/></svg>נגן</button>
+          <button id="plShuffle" class="ppill"><svg><use href="#i-shuffle"/></svg>ערבוב</button>
+        </div>
+      </div>
+      <div id="plTracks" class="tracklist"></div>
+      <div class="plactions">
+        <button id="plRename" class="plact">שנה שם</button>
+        <button id="plDelete" class="plact danger">מחק רשימה</button>
       </div>
     </div>
-    <div class="pl-hero">
-      <div id="plArt" class="pl-art"><svg><use href="#i-note"/></svg></div>
-      <h2 id="plName"></h2>
-      <span id="plCount" class="dim"></span>
-      <div class="pl-actions">
-        <button id="plPlayAll" class="pillbtn"><svg><use href="#i-play"/></svg> נגן</button>
-        <button id="plShufflePlay" class="pillbtn"><svg><use href="#i-shuffle"/></svg> ערבוב</button>
-      </div>
-    </div>
-    <div id="plSongs" class="list"></div>
   </section>
 
+  <div id="netNote" class="netnote hidden"></div>
 </main>
 
-<!-- floating mini player, Apple Music style -->
-<div id="mini" class="mini hidden">
+<!-- ============ מיני נגן ============ -->
+<div id="mini" class="hidden">
   <img id="mArt" alt="">
-  <div class="m-meta" id="mMeta">
-    <div id="mTitle" class="m-title"></div>
-    <div id="mArtist" class="m-artist"></div>
+  <div id="mMeta" class="mmeta">
+    <div id="mTitle" class="mttl"></div>
+    <div id="mArtist" class="mart dim"></div>
   </div>
-  <button id="mPlay" class="iconbtn big" aria-label="נגן / השהה"><svg><use href="#i-play"/></svg></button>
-  <button id="mNext" class="iconbtn big" aria-label="הבא"><svg><use href="#i-next"/></svg></button>
+  <button id="mPlay" class="mbtn"><svg><use href="#i-play"/></svg></button>
+  <button id="mNext" class="mbtn"><svg><use href="#i-next"/></svg></button>
 </div>
 
-<!-- bottom tab bar -->
-<nav class="tabbar">
-  <button class="tabbtn on" data-tab="search"><svg><use href="#i-search"/></svg><span>חיפוש</span></button>
-  <button class="tabbtn" data-tab="playlists"><svg><use href="#i-note"/></svg><span>ספריה</span></button>
-  <button class="tabbtn" id="infoBtn"><svg><use href="#i-info"/></svg><span>אודות</span></button>
+<!-- ============ שורת לשוניות ============ -->
+<nav id="tabbar">
+  <button class="tabbtn on" data-tab="listen"><svg><use href="#i-tab-listen"/></svg><span>האזנה</span></button>
+  <button class="tabbtn" data-tab="browse"><svg><use href="#i-tab-browse"/></svg><span>עיון</span></button>
+  <button class="tabbtn" data-tab="radio"><svg><use href="#i-tab-radio"/></svg><span>רדיו</span></button>
+  <button class="tabbtn" data-tab="library"><svg><use href="#i-tab-library"/></svg><span>ספריה</span></button>
+  <button class="tabbtn" data-tab="search"><svg><use href="#i-tab-search"/></svg><span>חיפוש</span></button>
 </nav>
 
-<!-- now playing sheet -->
-<div id="sheet" class="sheet">
-  <div class="grabber" id="sheetGrab"></div>
-  <div class="svtoggle" id="svToggle">
-    <button class="sv on" data-mode="song">שיר</button>
-    <button class="sv" data-mode="video">וידאו</button>
-  </div>
-  <img id="pArt" class="p-art" alt="">
-  <div class="p-metarow">
-    <div class="p-meta">
-      <div id="pTitle" class="p-title"></div>
-      <div id="pArtist" class="p-artist"></div>
+<!-- ============ הנגן המלא ============ -->
+<div id="player" class="hidden">
+  <div id="pBg"></div>
+  <div class="pinner">
+    <button id="pDown" class="pgrab"><svg><use href="#i-chev-down"/></svg></button>
+    <div id="svToggle" class="svtoggle">
+      <button class="sv on" data-mode="song">שיר</button>
+      <button class="sv" data-mode="video">קליפ</button>
     </div>
-    <button id="cAdd" class="iconbtn" title="הוסף לרשימה"><svg><use href="#i-plus"/></svg></button>
-  </div>
-  <div class="seekrow">
-    <input id="seek" type="range" min="0" max="1000" value="0">
-    <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
-  </div>
-  <div class="controls">
-    <button id="cBack10" class="iconbtn ctl s10" aria-label="אחורה 10 שניות"><svg viewBox="0 0 24 24"><path d="M12 5V2.8c0-.5-.6-.8-1-.4L7.6 5.7c-.3.3-.3.8 0 1.1L11 10c.4.3 1 .1 1-.4V7.1c2.9.2 5.1 2.6 5.1 5.4S14.8 18 12 18s-5.2-2.3-5.2-5.5c0-.4-.4-.8-.9-.8s-.9.4-.9.8C5 16.7 8.1 20 12 20s7-3.1 7-7-3.1-7.9-7-8z" fill="currentColor"/><text x="12.4" y="15.2" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">10</text></svg></button>
-    <button id="cPrev" class="iconbtn ctl" aria-label="הקודם"><svg><use href="#i-prev"/></svg></button>
-    <button id="cPlay" class="iconbtn play" aria-label="נגן / השהה"><svg><use href="#i-play"/></svg></button>
-    <button id="cNext" class="iconbtn ctl" aria-label="הבא"><svg><use href="#i-next"/></svg></button>
-    <button id="cFwd10" class="iconbtn ctl s10" aria-label="קדימה 10 שניות"><svg viewBox="0 0 24 24"><path d="M12 5V2.8c0-.5.6-.8 1-.4l3.4 3.3c.3.3.3.8 0 1.1L13 10c-.4.3-1 .1-1-.4V7.1C9.1 7.3 6.9 9.7 6.9 12.5S9.2 18 12 18s5.2-2.3 5.2-5.5c0-.4.4-.8.9-.8s.9.4.9.8C19 16.7 15.9 20 12 20s-7-3.1-7-7 3.1-7.9 7-8z" fill="currentColor"/><text x="11.6" y="15.2" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">10</text></svg></button>
-  </div>
-  <div class="subcontrols">
-    <button id="cShuffle" class="iconbtn" aria-label="אקראי"><svg><use href="#i-shuffle"/></svg></button>
-    <button id="cRepeat" class="iconbtn" aria-label="חזרה"><svg><use href="#i-repeat"/></svg></button>
-  </div>
-  <div class="volrow">
-    <svg class="volic"><use href="#i-speaker"/></svg>
-    <input id="vol" type="range" min="0" max="100" value="90">
-    <svg class="volic hi"><use href="#i-speaker"/></svg>
-  </div>
-  <a id="cOpenYT" class="ytlink" target="_blank" rel="noopener">פתח ביוטיוב ↗</a>
-</div>
-<div id="scrim" class="scrim"></div>
-
-<!-- add-to-playlist sheet -->
-<div id="addSheet" class="sheet small">
-  <div class="grabber" id="addGrab"></div>
-  <h3>הוסף לרשימה</h3>
-  <div id="addList" class="list"></div>
-  <button id="addNew" class="textbtn"><svg><use href="#i-plus"/></svg> רשימה חדשה</button>
-</div>
-
-<div id="toast" class="toast hidden"></div>
-
-<div id="iosTip" class="iostip hidden">
-  <b>טיפ לאייפון 🍏</b>
-  כדי לשמוע עם מסך כבוי: נעלו את המכשיר בזמן הנגינה. אם הנגינה נעצרת - לחצו ▶ במסך הנעילה או במרכז הבקרה, והיא תמשיך ברקע.
-  <button id="iosTipOk">הבנתי</button>
-</div>
-
-<div id="infoModal" class="modal hidden">
-  <div class="card">
-    <h3>נגן צף 🎵</h3>
-    <p>נגן מוזיקה אישי שמנגן מיוטיוב, עם רשימות השמעה שנשמרות אצלך במכשיר.</p>
-    <p class="dim">כדי שיהיה אייקון במסך הבית כמו אפליקציה: בספארי לחצו על כפתור השיתוף ← "הוסף למסך הבית".</p>
-    <p class="dim">פרויקט פרטי ואישי. לא שייך ליוטיוב או גוגל.</p>
-    <button id="infoClose" class="pillbtn wide">סגור</button>
-  </div>
-</div>
-
-<!-- artist page (Apple Music style) -->
-<div id="artistSheet" class="asheet hidden">
-  <div class="ascroll">
-    <div class="ahero">
-      <div class="abanner" id="aBanner"></div>
-      <button id="aClose" class="iconbtn aclose" aria-label="סגור"><svg><use href="#i-x"/></svg></button>
-      <div class="ahero-bot">
-        <img id="aAvatar" class="aavatar" alt="">
-        <div class="anames"><div id="aName" class="aname"></div><div id="aSubs" class="asubs"></div></div>
+    <div id="artWrap">
+      <img id="pArt" alt="">
+      <div id="ytwrap"><div id="ytplayer"></div><div id="vidTouch"></div><div id="ffwd" class="hidden">▶▶ ×2</div></div>
+    </div>
+    <div class="ptitlerow">
+      <div class="pmeta2">
+        <div id="pTitle" class="ptitle"></div>
+        <div id="pArtist" class="partist"></div>
       </div>
+      <button id="pFav" class="ibtn"><svg><use href="#i-star"/></svg></button>
+      <button id="pDots" class="ibtn"><svg><use href="#i-dots"/></svg></button>
     </div>
-    <div class="aactions">
-      <button id="aPlay" class="pillbtn"><svg><use href="#i-play"/></svg> נגן</button>
-      <button id="aShuffle" class="pillbtn"><svg><use href="#i-shuffle"/></svg> ערבוב</button>
+    <div class="seekrow">
+      <input id="seek" type="range" min="0" max="1000" value="0">
+      <div class="ttimes"><span id="tCur">0:00</span><span id="tRem">-0:00</span></div>
     </div>
-    <div id="aBody"></div>
-    <div style="height:calc(130px + var(--safe-b))"></div>
+    <div class="pcontrols">
+      <button id="cShuffle" class="ibtn"><svg><use href="#i-shuffle"/></svg></button>
+      <button id="cPrev" class="cbtn"><svg><use href="#i-prev"/></svg></button>
+      <button id="cPlay" class="cbtn main"><svg><use href="#i-play"/></svg></button>
+      <button id="cNext" class="cbtn"><svg><use href="#i-next"/></svg></button>
+      <button id="cRepeat" class="ibtn"><svg><use href="#i-repeat"/></svg></button>
+    </div>
+    <div class="seek10">
+      <button id="cBack10" class="ibtn"><svg><use href="#i-back10"/></svg></button>
+      <button id="cFwd10" class="ibtn"><svg><use href="#i-fwd10"/></svg></button>
+    </div>
+    <div class="volrow"><svg class="vsm"><use href="#i-note"/></svg><input id="vol" type="range" min="0" max="100"><svg class="vlg"><use href="#i-note"/></svg></div>
+    <div class="pbottom">
+      <button id="cLyrics" class="ibtn"><svg><use href="#i-lyrics"/></svg></button>
+      <a id="cOpenYT" class="ibtn" target="_blank" rel="noopener"><svg><use href="#i-share"/></svg></a>
+      <button id="cQueue" class="ibtn"><svg><use href="#i-queue"/></svg></button>
+    </div>
   </div>
 </div>
 
-<div id="ytwrap" aria-hidden="true"><div id="ytplayer"></div><div id="vidTouch"></div></div>
-<div id="ffwd" class="ffwd hidden">▶▶ x2</div>
+<!-- ============ תור ההשמעה ============ -->
+<div id="queueSheet" class="sheetbox hidden">
+  <div class="sheethead">
+    <h3>הבא בתור</h3>
+    <button class="xbtn" data-close="queueSheet"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div id="queueList" class="list sheetlist"></div>
+</div>
 
+<!-- ============ תפריט שיר ============ -->
+<div id="songSheet" class="sheetbox hidden">
+  <div id="songSheetHead" class="songsheethead"></div>
+  <div class="sheetlist">
+    <button class="sheetrow" id="ssFav"><svg><use href="#i-star"/></svg><span>הוסף למועדפים</span></button>
+    <button class="sheetrow" id="ssAdd"><svg><use href="#i-plus"/></svg><span>הוסף לרשימה</span></button>
+    <button class="sheetrow" id="ssArtist"><svg><use href="#i-tab-listen"/></svg><span>עבור לאמן</span></button>
+    <button class="sheetrow hidden" id="ssRemove"><svg><use href="#i-trash"/></svg><span>הסר מהרשימה</span></button>
+  </div>
+</div>
 
-<script src="app.js?v=10" defer></script>
+<!-- ============ הוספה לרשימה ============ -->
+<div id="addSheet" class="sheetbox hidden">
+  <div class="sheethead">
+    <h3>הוסף לרשימה</h3>
+    <button class="xbtn" data-close="addSheet"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div class="sheetlist">
+    <button class="sheetrow" id="addNew"><svg><use href="#i-plus"/></svg><span>רשימה חדשה</span></button>
+  </div>
+  <div id="addList" class="list sheetlist"></div>
+</div>
+
+<div id="scrim"></div>
+<div id="toast" class="hidden"></div>
+</div>
+<script src="app.js?v=11"></script>
 </body>
 </html>
