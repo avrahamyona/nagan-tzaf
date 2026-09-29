@@ -1,4 +1,4 @@
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2812,6 +2812,8 @@ async function loadAlbumTracks(a) {
 }
 async function openAlbum(a) {
   const seq = ++alSeq;
+  // Album opened from an artist page must appear above that page.
+  $('page-album').classList.toggle('from-artist', $('page-artist').classList.contains('on'));
   $('page-album').classList.remove('release-list');
   $('page-album').style.setProperty('--album-cover', a.thumb ? `url("${a.thumb.replace(/["\\]/g, '')}")` : 'none');
   $('alPlay').style.display = ''; $('alShuffle').style.display = '';
@@ -3117,6 +3119,7 @@ let aSongs = [], aSeq = 0, aCur = null;
 async function openArtist(chId, name, avatar) {
   const seq = ++aSeq;
   aCur = { chId, name, avatar };
+  $('page-album').classList.remove('from-artist');
   openPage('page-artist');
   $('aName').textContent = name || 'אמן';
   $('aBanner').style.backgroundImage = avatar ? `url("${avatar}")` : '';
@@ -3207,9 +3210,11 @@ function renderArtistBody(songs, albums, videos) {
   const visibleAlbums = albums;
   if (visibleAlbums.length) {
     const latest = visibleAlbums[0];
-    const lc = document.createElement('div');
+    const lc = document.createElement('button');
+    lc.type = 'button';
     lc.className = 'latestcard';
-    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">הוצאה נבחרת</div><div class="lc-t"></div><div class="lc-s dim"></div></div><span class="lc-chev" aria-hidden="true">‹</span>`;
+    lc.setAttribute('aria-label', 'פתח אלבום חדש: ' + latest.title);
+    lc.innerHTML = `<img src="${latest.thumb}" alt=""><div><div class="lc-k">אלבום חדש</div><div class="lc-t"></div><div class="lc-s dim"></div></div><span class="lc-chev" aria-hidden="true">‹</span>`;
     lc.querySelector('.lc-t').textContent = latest.title;
     lc.querySelector('.lc-s').textContent = latest.sub;
     lc.addEventListener('click', () => openAlbum(latest));
@@ -3258,6 +3263,7 @@ $('aFav').addEventListener('click', () => {
   $('aFav').classList.toggle('on', !!state.favArtists[aCur.chId]);
 });
 async function openArtistAlbums(albums, title, nextpage = '', artistId = '', artistName = '') {
+  $('page-album').classList.toggle('from-artist', $('page-artist').classList.contains('on'));
   const seq = ++alSeq; alTracks = []; alCur = null;
   $('page-album').classList.add('release-list');
   $('page-album').style.setProperty('--album-cover', 'none');

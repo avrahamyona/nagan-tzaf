@@ -153,7 +153,8 @@ svg use { pointer-events: none; }
   transform: translateX(-4%); transition: transform .18s ease;
 }
 .page.on { display: block; transform: none; }
-#page-artist.on { z-index: 6; } /* artist opened from an album must remain visible above it */
+#page-artist.on { z-index: 6; } /* artist opened from an album */
+#page-album.on.from-artist { z-index: 7; } /* album opened from an artist */
 .page .ascroll { position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(var(--tabbar-h) + 96px); scrollbar-width: none; }
 .page .ascroll::-webkit-scrollbar { display: none; }
 .pageback {
@@ -190,8 +191,9 @@ svg use { pointer-events: none; }
 .asec-body.list { padding: 0 16px; }
 .asec-body.hscroll { margin: 0; padding: 2px 16px 6px; }
 .latestcard {
-  display: flex; gap: 12px; margin: 0 16px; padding: 12px; background: var(--card); border-radius: 10px; cursor: pointer;
+  display: flex; gap: 12px; margin: 0 16px; padding: 12px; width: calc(100% - 32px); text-align: start; background: var(--card); border-radius: 10px; cursor: pointer;
 }
+.latestcard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .latestcard img { width: 74px; height: 74px; border-radius: 6px; object-fit: cover; background: var(--card2); }
 .latestcard .lc-k { font-size: 11px; color: var(--dim); font-weight: 600; letter-spacing: .3px; }
 .latestcard .lc-t { font-size: 16px; font-weight: 600; margin-top: 2px; }
@@ -701,6 +703,13 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
    for the installed home-screen app, but use the fuller size in the browser. */
 @media (max-width: 819px) and (max-height: 720px) and (display-mode: browser) {
   #pArt { width: min(100%, 48dvh); max-width: min(100%, 48dvh); max-height: 48dvh; }
+}
+
+/* The installed viewport is taller than Safari's browser viewport, so the
+   base 48dvh rule grows past the browser artwork size on the same iPhone.
+   Cap the standalone size to the browser's 339px at a 393px screen width. */
+@media (max-width: 819px) and (display-mode: standalone) {
+  #pArt { width: min(100%, 86vw, 340px); max-width: min(100%, 86vw, 340px); max-height: min(86vw, 340px); }
 }
 
 /* Explicit retry when no trustworthy lyric match is available. */
