@@ -697,6 +697,11 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
   .volrow { padding-top: 12px; }
   .pbottom { margin-top: 10px; }
 }
+/* Safari's visible toolbar shortens the viewport. Keep the compact artwork
+   for the installed home-screen app, but use the fuller size in the browser. */
+@media (max-width: 819px) and (max-height: 720px) and (display-mode: browser) {
+  #pArt { width: min(100%, 48dvh); max-width: min(100%, 48dvh); max-height: 48dvh; }
+}
 
 /* Explicit retry when no trustworthy lyric match is available. */
 #lyrRetry { display: block; margin: 18px auto 0; padding: 9px 16px; border-radius: 10px; background: rgba(255,255,255,.17); color: inherit; font-weight: 600; }
