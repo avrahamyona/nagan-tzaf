@@ -1,4 +1,4 @@
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -176,39 +176,62 @@ function fillArtistPortrait(card, name, chId = '') {
     }
   });
 }
+// Verify a lyric hit against one real line. Short paraphrases may swap Hebrew
+// pronouns or omit filler words, but cannot match on a single generic word.
+const LYRIC_FILLER = new Set(['אני','את','אתה','היא','הוא','הם','אנחנו','לי','לו','לה','לנו','שלי','שלו','שלה','לפי','ש','כי','זה','זו','אחד','אחת']);
+function lyricWords(s) {
+  return normTxt(s).split(' ').map(w => w === 'שלא' ? 'לא' : w)
+    .filter(w => w.length > 1 && !LYRIC_FILLER.has(w));
+}
+function lyricLineScore(line, query) {
+  const nq = normTxt(query), nl = normTxt(line);
+  if (!nq || !nl) return 0;
+  if (nl.includes(nq)) return 100;
+  const words = lyricWords(query);
+  if (words.length === 1) return words[0].length >= 4 && lyricWords(line).includes(words[0]) ? 70 : 0;
+  if (words.length < 2) return 0; // do not guess from one common word
+  const lineWords = lyricWords(line);
+  const hits = words.filter(w => lineWords.includes(w)).length;
+  // Require two independent anchors on the same line, and most of the query.
+  // A user's "לא אכפת לי מכלום" can match "שלא אכפת לו מכלום".
+  if (hits < 2 || hits / words.length < .8) return 0;
+  const neg = /(?:^| )(?:לא|שלא)(?: |$)/.test(nq);
+  if (neg && !/(?:^| )(?:לא|שלא)(?: |$)/.test(nl)) return 0;
+  return 50 + 30 * hits / words.length;
+}
 async function searchLyrics(q) {
-  const words = normTxt(q).split(' ').filter(w => w.length > 1);
-  if (!words.length) return [];
+  if (!normTxt(q)) return [];
   const matchedLine = it => {
     const lines = String(it.plainLyrics || '').split('\n').map(x => x.trim()).filter(Boolean);
-    return lines.find(line => words.every(w => normTxt(line).includes(w))) || '';
+    return lines.map(line => ({ line, score: lyricLineScore(line, q) }))
+      .sort((a, b) => b.score - a.score)[0] || { line: '', score: 0 };
   };
   const matches = [], seen = new Set();
   const add = it => {
     if (/\(paused\)/i.test(it.trackName || '')) return;
-    const line = matchedLine(it);
+    const hit = matchedLine(it);
     const title = it.trackName || '', artist = it.artistName || '';
     const key = normTxt(title).replace(/\s*\(paused\)$/i, '');
-    if (line && title && artist && !seen.has(key)) { seen.add(key); matches.push({ title, artist, line }); }
+    if (hit.score && title && artist && !seen.has(key)) {
+      seen.add(key); matches.push({ title, artist, line: hit.line, score: hit.score });
+    }
   };
-  // The worker may have confirmed lyric matches already. If it cannot find
-  // candidates, discover song titles through video search, then verify each
-  // against LRCLIB's full lyric text rather than displaying an unproven hit.
   try {
     const r = await fetch(STREAM_API + '/lyrics?q=' + encodeURIComponent(q));
     if (r.ok) (await r.json()).matches?.forEach(x => {
-      if (x.title && x.artist && x.line && words.every(w => normTxt(x.line).includes(w))) {
+      const score = lyricLineScore(x.line, q);
+      if (x.title && x.artist && score) {
         const key = normTxt(x.title).replace(/\s*\(paused\)$/i, '');
-        if (!seen.has(key)) { seen.add(key); matches.push(x); }
+        if (!seen.has(key)) { seen.add(key); matches.push({ ...x, score }); }
       }
     });
   } catch {}
-  if (matches.length >= 5) return matches;
+  if (matches.length >= 5) return matches.sort((a,b) => b.score - a.score).map(({score,...x}) => x);
   try {
     const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
     if (r.ok) (await r.json()).slice(0, 12).forEach(add);
   } catch {}
-  if (matches.length >= 5) return matches;
+  if (matches.length >= 5) return matches.sort((a,b) => b.score - a.score).map(({score,...x}) => x);
   try {
     const j = await pipedFetch('/search?q=' + encodeURIComponent(q) + '&filter=videos');
     const candidates = (j.items || []).filter(x => x.type === 'stream').slice(0, 8);
@@ -219,9 +242,6 @@ async function searchLyrics(q) {
       if (parts.length < 2) continue;
       const artist = parts.shift().trim(), track = parts.join(' - ').split(/\s*[|｜]\s*/)[0].trim();
       if (!artist || !track) continue;
-      // The video's uploader often lists two artists while LRCLIB has just one.
-      // Search by title, then verify the exact lyric line. An artist filter here
-      // silently rejects valid duets and official Hebrew/romanized releases.
       const url = 'https://lrclib.net/api/search?track_name=' + encodeURIComponent(track);
       try {
         const r = await fetch(url);
@@ -229,7 +249,7 @@ async function searchLyrics(q) {
       } catch {}
     }
   } catch {}
-  return matches;
+  return matches.sort((a,b) => b.score - a.score).map(({score,...x}) => x);
 }
 
 async function searchPlaylists(q, filter = 'music_albums') {
@@ -335,6 +355,7 @@ function setAudioSrc(url) {
   if (url && url.includes('workers.dev')) audioEl.crossOrigin = 'anonymous';
   else audioEl.removeAttribute('crossorigin');
   audioEl.src = url;
+  registerMediaControls();
 }
 audioEl.preload = 'none';
 const clipEl = $('clipEl');
@@ -551,6 +572,7 @@ function useClipEngine(t, startAt, autoplay) {
     if (!url) { clipUnavailable(); return; }
     engine = 'clip'; paintEngineBadge();
     clipEl.src = url;
+    registerMediaControls();
     seekWhenReady(clipEl, startAt);
     if (autoplay !== false) clipEl.play().catch(() => syncPlayUI(true));
   });
@@ -861,6 +883,7 @@ function updateMediaSession() {
         title: t.title, artist: t.artist, album: 'Avi Music', artwork,
       });
     } catch {}
+    registerMediaControls(); // iOS may reset its transport set after metadata changes.
   };
   // Instant metadata with the plain thumbs; upgraded to full-bleed square
   // artwork as soon as the cropped version is ready (iOS lock screen takes it).
@@ -881,6 +904,7 @@ function registerMediaControls() {
     ['play', () => { userPaused = false; if (activeAudio()) M().play().catch(() => {}); else ytReady && yt.playVideo(); }],
     ['pause', () => { userPaused = true; if (activeAudio()) M().pause(); else ytReady && yt.pauseVideo(); }],
     ['nexttrack', next], ['previoustrack', () => advance(-1, false)],
+    ...(IS_IOS ? [['seekbackward', null], ['seekforward', null], ['seekto', null]] : []),
     // iOS can prefer its seek UI over next/previous when seekto is exposed.
     // Leave arbitrary seeking in the app, but do not advertise it on its lock screen.
     ...(!IS_IOS ? [['seekto', d => {
@@ -895,8 +919,13 @@ function registerMediaControls() {
   }
 }
 registerMediaControls();
-audioEl.addEventListener('playing', registerMediaControls);
-clipEl.addEventListener('playing', registerMediaControls);
+for (const el of [audioEl, clipEl]) {
+  el.addEventListener('play', registerMediaControls);
+  el.addEventListener('playing', registerMediaControls);
+  el.addEventListener('loadedmetadata', registerMediaControls);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) registerMediaControls(); });
+window.addEventListener('pageshow', registerMediaControls);
 
 /* ---------- progress clock ---------- */
 let lastCur = -1, endArmed = false;
@@ -989,6 +1018,7 @@ function paintNow() {
   setIcon($('pFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('pFav').classList.toggle('on', !!state.fav[t.id]);
   updateMediaSession();
+  registerMediaControls();
   paintPlayingRows();
 }
 function restoreLast() {
