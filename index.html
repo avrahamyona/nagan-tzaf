@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="icon-192.png?v=49">
 <link rel="apple-touch-icon" href="icon-180.png?v=49">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=76">
+<link rel="stylesheet" href="style.css?v=80">
 </head>
 <body>
 
@@ -307,7 +307,9 @@
 </div>
 
 <!-- ============ תפריט שיר ============ -->
-<div id="songSheet" class="sheetbox hidden">
+<div id="songSheet" class="sheetbox hidden" role="dialog" aria-label="אפשרויות שיר">
+  <div id="songPreview" class="song-preview hidden"><button id="songPreviewPlay" aria-label="נגן שיר"><span class="song-preview-meta"><strong id="songPreviewTitle"></strong><small id="songPreviewArtist"></small></span><img id="songPreviewArt" alt=""></button></div>
+  <div class="song-menu-shortcuts"><button id="songShortcutShare" aria-label="שיתוף"><svg><use href="#i-share"/></svg><span>שיתוף</span></button><button id="songShortcutFav" aria-label="מועדפים"><svg><use href="#i-star"/></svg><span>מועדפים</span></button><button id="songShortcutAdd" aria-label="הוספה"><svg><use href="#i-plus"/></svg><span>הוספה</span></button></div>
   <div id="songSheetHead" class="songsheethead"></div>
   <div class="sheetlist">
     <button class="sheetrow" id="ssShare"><svg><use href="#i-share"/></svg><span>שיתוף</span></button>
@@ -316,6 +318,8 @@
     <button class="sheetrow hidden" id="ssQueueNext"><svg><use href="#i-next"/></svg><span>הוסף לתחילת התור</span></button>
     <button class="sheetrow hidden" id="ssQueueLast"><svg><use href="#i-queue"/></svg><span>הוסף לסוף התור</span></button>
     <button class="sheetrow" id="ssStation"><svg><use href="#i-tab-radio"/></svg><span>יצירת תחנה</span></button>
+    <button class="sheetrow" id="ssAlbum"><svg><use href="#i-go-album"/></svg><span>עבור לאלבום</span><small id="ssAlbumName"></small></button>
+    <button class="sheetrow" id="ssLyrics"><svg><use href="#i-lyrics"/></svg><span>הצגת מילים</span></button>
     <button class="sheetrow" id="ssArtist"><svg><use href="#i-tab-listen"/></svg><span>עבור לאמן</span></button>
     <button class="sheetrow" id="ssLess"><svg><use href="#i-x"/></svg><span>פחות הצעות מהשיר הזה</span></button>
     <button class="sheetrow hidden" id="ssRemove"><svg><use href="#i-trash"/></svg><span>הסר מהרשימה</span></button>
@@ -337,6 +341,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=76"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>

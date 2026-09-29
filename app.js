@@ -1,4 +1,4 @@
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -1078,9 +1078,35 @@ function trackRow(t, opts = {}) {
     artist.addEventListener('keydown', open);
   }
   row.addEventListener('click', () => opts.onPlay && opts.onPlay());
+  attachSongRowHold(row, t, opts);
   row.querySelector('.dots').addEventListener('click', e => { e.stopPropagation(); openSongSheet(t, opts.sheet || {}); });
   if (opts.queueSwipe && t.id) attachTrackSwipe(row, t);
   return row;
+}
+function attachSongRowHold(row, t, opts) {
+  let timer = null, start = null, consumed = false;
+  row.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || e.target.closest('button, .qhandle, input, a, .artist-link')) return;
+    start = { x:e.clientX, y:e.clientY }; consumed = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (!start || row.classList.contains('swipe-open-start') || row.classList.contains('swipe-open-end')) return;
+      consumed = true; openSongSheet(t, { ...(opts.sheet || {}), preview:true, onPlay:opts.onPlay });
+    }, 430);
+  });
+  row.addEventListener('pointermove', e => {
+    if (start && (Math.abs(e.clientX-start.x)>12 || Math.abs(e.clientY-start.y)>12)) { clearTimeout(timer); start=null; }
+  });
+  const finish=()=>{clearTimeout(timer);start=null;};
+  for(const type of ['pointerup','pointercancel','lostpointercapture']) row.addEventListener(type,finish);
+  row.addEventListener('contextmenu', e => {
+    if (e.pointerType === 'mouse' || consumed) return;
+    e.preventDefault(); consumed=true; openSongSheet(t,{...(opts.sheet||{}),preview:true,onPlay:opts.onPlay});
+  });
+  row.addEventListener('click', e=>{
+    if (!consumed) return;
+    e.preventDefault(); e.stopImmediatePropagation(); consumed=false;
+  },true);
 }
 // In search/library rows, swipe toward the left for play-next and toward
 // the right for add-to-end / remove. Actions remain explicit buttons, not
@@ -1273,9 +1299,17 @@ function openSongSheet(t, opts = {}) {
   setIcon($('ssFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'בטל אהבתי' : 'אהבתי';
   $('ssArtist').classList.toggle('hidden', !t.artist);
+  $('ssAlbum').classList.toggle('hidden', !t.album?.plId);
+  $('ssAlbumName').textContent=t.album?.title||'';
+  if (!t.album?.plId) verifiedAlbumFor(t).then(a=>{if(sheetTrack?.id!==t.id || !a)return; $('ssAlbum').classList.remove('hidden'); $('ssAlbumName').textContent=a.title; sheetOpts.verifiedAlbum=a;});
   $('ssQueueNext').classList.toggle('hidden', !current());
   $('ssQueueLast').classList.toggle('hidden', !current());
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
+  const preview=$('songPreview'), sheet=$('songSheet');
+  preview.classList.toggle('hidden', !opts.preview);
+  sheet.classList.toggle('has-preview', !!opts.preview);
+  $('songPreviewTitle').textContent=t.title; $('songPreviewArtist').textContent=t.artist||'';
+  $('songPreviewArt').src=thumb(t.id);
   openSheet('songSheet');
 }
 function toggleFav(t) {
@@ -1292,9 +1326,15 @@ function toggleFav(t) {
   save(); paintNow(); renderLibrary();
 }
 $('ssFav').addEventListener('click', () => { if (sheetTrack) toggleFav(sheetTrack); closeSheet('songSheet'); });
+$('songShortcutShare').addEventListener('click',()=>$('ssShare').click());
+$('songShortcutFav').addEventListener('click',()=>$('ssFav').click());
+$('songShortcutAdd').addEventListener('click',()=>$('ssAdd').click());
+$('songPreviewPlay').addEventListener('click',()=>{const play=sheetOpts.onPlay;closeSheet('songSheet');if(play)play();else if(sheetTrack)playQueue([sheetTrack],0);});
 $('ssAdd').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack) openAddSheet(sheetTrack); });
-$('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack?.artist) { closePlayer(); if (sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); else searchArtistAndOpen(sheetTrack.artist); } });
+$('ssArtist').addEventListener('click', () => { closeSheet('songSheet'); if (sheetTrack?.artist) { if($('queueSheet').classList.contains('open'))closeSheet('queueSheet'); closePlayer(); if (sheetTrack.ch) openArtist(sheetTrack.ch, sheetTrack.artist, ''); else searchArtistAndOpen(sheetTrack.artist); } });
 $('ssRemove').addEventListener('click', () => { closeSheet('songSheet'); if (sheetOpts.onRemove) sheetOpts.onRemove(); });
+$('ssAlbum').addEventListener('click',()=>{const a=sheetTrack?.album?.plId?sheetTrack.album:sheetOpts.verifiedAlbum;closeSheet('songSheet');if(a){if($('queueSheet').classList.contains('open'))closeSheet('queueSheet');closePlayer();openAlbum(a);}});
+$('ssLyrics').addEventListener('click',()=>{const t=sheetTrack;closeSheet('songSheet');if(t){if(current()?.id===t.id){if($('queueSheet').classList.contains('open'))closeSheet('queueSheet');openLyrics();}else toast('המילים זמינות לשיר המתנגן');}});
 
 function shareSong(t) {
   const url = location.origin + location.pathname + '?song=' + t.id;
@@ -1368,7 +1408,7 @@ function queueRowOptions(row, t) {
   dot.replaceWith(replacement);
   replacement.addEventListener('click', e => {
     e.stopPropagation();
-    closeSheet('queueSheet'); setTimeout(() => openSongSheet(t), 250);
+    openSongSheet(t, {preview:true});
   });
 }
 let queueHistoryVisible = false;
