@@ -302,7 +302,11 @@ svg use { pointer-events: none; }
   max-width: 100%; max-height: 100%; aspect-ratio: 1; width: auto; height: auto; object-fit: cover;
   border-radius: 10px; border: 1px solid rgba(255,255,255,.14);
   box-shadow: 0 14px 44px rgba(0,0,0,.5); background: rgba(255,255,255,.08);
+  transform-origin: center center;
+  transition: transform 220ms cubic-bezier(.25,.1,.25,1);
 }
+#player.art-paused #pArt { transform: scale(.88); }
+@media (prefers-reduced-motion: reduce) { #pArt { transition: none; } }
 body.vid #pArt { display: none; }
 #ytwrap { display: none; position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; }
 body.vid #ytwrap { display: block; }
@@ -662,8 +666,8 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
   .svtoggle { margin: 2px auto 0; background: rgba(255,255,255,.16); }
   .svtoggle .sv { color: rgba(255,255,255,.84); }
   .svtoggle .sv.on { background: rgba(255,255,255,.94); color: #222; }
-  #artWrap { flex: 1 1 auto; min-height: 0; padding: 22px 0 22px; align-items: center; }
-  #pArt { width: min(100%, 43dvh); height: auto; max-width: min(100%, 43dvh); max-height: 43dvh; aspect-ratio: 1; object-fit: cover; border: 0; border-radius: 7px; box-shadow: 0 20px 36px rgba(0,0,0,.16); }
+  #artWrap { flex: 1 1 auto; min-height: 0; margin-inline: -20px; padding: 22px 0 22px; align-items: center; }
+  #pArt { width: min(100%, 48dvh); height: auto; max-width: min(100%, 48dvh); max-height: 48dvh; aspect-ratio: 1; object-fit: cover; border: 0; border-radius: 7px; box-shadow: 0 20px 36px rgba(0,0,0,.16); }
   .ptitlerow { margin-top: 0; }
   .ptitle { color: #fff; font-size: 19px; }
   .partist, .partist.link { color: rgba(255,255,255,.65); font-size: 17px; }
