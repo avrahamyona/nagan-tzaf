@@ -1,4 +1,4 @@
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -591,7 +591,6 @@ function loadTrack(t, opts = {}) {
   clearTimeout(ytRetryTimer);
   window._streamDiag = '';
   lastCur = -1;
-  if (videoMode) { useClipEngine(t, opts.startAt, opts.autoplay !== false); return; }
   engine = 'audio'; paintEngineBadge(); playGen++;
   audioEl.dataset.vid = t.id;
   audioRetry = 0;
@@ -1091,7 +1090,7 @@ function attachSongRowHold(row, t, opts) {
     clearTimeout(timer);
     timer = setTimeout(() => {
       if (!start || row.classList.contains('swipe-open-start') || row.classList.contains('swipe-open-end')) return;
-      consumed = true; openSongSheet(t, { ...(opts.sheet || {}), preview:true, onPlay:opts.onPlay });
+      consumed = true; openSongSheet(t, { ...(opts.sheet || {}), preview:true, sourceRow:row, onPlay:opts.onPlay });
     }, 430);
   });
   row.addEventListener('pointermove', e => {
@@ -1101,7 +1100,7 @@ function attachSongRowHold(row, t, opts) {
   for(const type of ['pointerup','pointercancel','lostpointercapture']) row.addEventListener(type,finish);
   row.addEventListener('contextmenu', e => {
     if (e.pointerType === 'mouse' || consumed) return;
-    e.preventDefault(); consumed=true; openSongSheet(t,{...(opts.sheet||{}),preview:true,onPlay:opts.onPlay});
+    e.preventDefault(); consumed=true; openSongSheet(t,{...(opts.sheet||{}),preview:true,sourceRow:row,onPlay:opts.onPlay});
   });
   row.addEventListener('click', e=>{
     if (!consumed) return;
@@ -1191,8 +1190,8 @@ function artistHit(c) {
 }
 
 /* ---------- sheets ---------- */
-const openSheet = id => { $(id).classList.remove('hidden'); requestAnimationFrame(() => $(id).classList.add('open')); $('scrim').classList.add('on'); };
-const closeSheet = id => { $(id).classList.remove('open'); setTimeout(() => $(id).classList.add('hidden'), 240); if (!document.querySelector('.sheetbox.open')) $('scrim').classList.remove('on'); };
+const openSheet = id => { const sheet=$(id); sheet._hideTicket=(sheet._hideTicket||0)+1; sheet.classList.remove('hidden','is-closing'); requestAnimationFrame(() => sheet.classList.add('open')); $('scrim').classList.add('on'); };
+const closeSheet = id => { const sheet=$(id); if(id==='songSheet' && sheet.classList.contains('has-preview')) sheet.classList.add('is-closing'); sheet.classList.remove('open'); const ticket=(sheet._hideTicket=(sheet._hideTicket||0)+1); setTimeout(() => { if(sheet._hideTicket===ticket) { sheet.classList.add('hidden'); sheet.classList.remove('is-closing'); } }, id==='songSheet' && sheet.classList.contains('has-preview') ? 360 : 240); if (!document.querySelector('.sheetbox.open')) $('scrim').classList.remove('on'); };
 const closeAllSheets = () => document.querySelectorAll('.sheetbox').forEach(s => closeSheet(s.id));
 $('scrim').addEventListener('click', closeAllSheets);
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => {
@@ -1306,11 +1305,29 @@ function openSongSheet(t, opts = {}) {
   $('ssQueueLast').classList.toggle('hidden', !current());
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
   const preview=$('songPreview'), sheet=$('songSheet');
+  sheet.classList.remove('is-closing');
   preview.classList.toggle('hidden', !opts.preview);
   sheet.classList.toggle('has-preview', !!opts.preview);
   $('songPreviewTitle').textContent=t.title; $('songPreviewArtist').textContent=t.artist||'';
   $('songPreviewArt').src=thumb(t.id);
-  openSheet('songSheet');
+  if (opts.preview && opts.sourceRow?.isConnected && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // Animate the source row into the preview card. Leave the panel untransformed
+    // so the preview's fixed layout can be measured without stacking transforms.
+    sheet._hideTicket=(sheet._hideTicket||0)+1;
+    sheet.classList.remove('row-preview-motion', 'open', 'hidden');
+    const from=opts.sourceRow.getBoundingClientRect(), to=preview.getBoundingClientRect();
+    const fromX=from.left+from.width/2, toX=to.left+to.width/2;
+    const fromY=from.top+from.height/2, toY=to.top+to.height/2;
+    preview.style.setProperty('--preview-x', (fromX-toX)+'px');
+    preview.style.setProperty('--preview-y', (fromY-toY)+'px');
+    preview.style.setProperty('--preview-scale', Math.min(1,Math.max(.38,from.width/to.width)).toFixed(3));
+    sheet.classList.add('row-preview-motion');
+    // The first frame paints the collapsed source before expanding it.
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if(!sheet.classList.contains('row-preview-motion') || sheet.classList.contains('hidden')) return;
+      sheet.classList.add('open'); $('scrim').classList.add('on');
+    }));
+  } else { sheet._sourceRow = null; sheet.classList.remove('row-preview-motion'); openSheet('songSheet'); }
 }
 function toggleFav(t) {
   if (state.fav[t.id]) {
@@ -1408,7 +1425,7 @@ function queueRowOptions(row, t) {
   dot.replaceWith(replacement);
   replacement.addEventListener('click', e => {
     e.stopPropagation();
-    openSongSheet(t, {preview:true});
+    openSongSheet(t, {preview:true,sourceRow:row});
   });
 }
 let queueHistoryVisible = false;
@@ -1987,40 +2004,8 @@ seekEl.addEventListener('pointerup', () => { seeking = false; });
 seekEl.addEventListener('pointercancel', () => { seeking = false; });
 seekEl.addEventListener('blur', () => { seeking = false; });
 
-/* ---------- song/video toggle ---------- */
+/* Song-only playback. Keep the video element solely for native AirPlay routing. */
 let videoMode = false;
-document.querySelectorAll('#svToggle .sv').forEach(b => b.addEventListener('click', () => {
-  const toVideo = b.dataset.mode === 'video';
-  if (toVideo === videoMode) return;
-  const t = current();
-  const pos = livePosition();
-  const wasPlaying = !!(t && (engine === 'clip' ? clipEl.src && !clipEl.paused
-    : engine === 'audio' ? audioEl.src && !audioEl.paused
-    : (engine === 'yt' || engine === 'yt-pending') && ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING));
-  if (t) {
-    state.resume = { pos, playing: wasPlaying, vid: t.id };
-    save();
-    try { audioEl.pause(); clipEl.pause(); yt.stopVideo(); } catch {}
-  }
-  videoMode = toVideo;
-  document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x === b));
-  document.body.classList.toggle('vid', videoMode);
-  if (t) {
-    if (videoMode) {
-      useClipEngine(t, pos, wasPlaying);
-    } else {
-      try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
-      engine = 'audio'; playGen++; paintEngineBadge(); audioEl.dataset.vid = t.id;
-      resolveAudioUrl(t.id).then(url => {
-        if (audioEl.dataset.vid !== t.id || videoMode) return;
-        if (!url) { useYtEngine(t, pos); return; }
-        setAudioSrc(url);
-        seekWhenReady(audioEl, pos);
-        if (wasPlaying) audioEl.play().catch(() => syncPlayUI(true));
-      });
-    }
-  }
-}));
 
 /* ---------- toast + notes ---------- */
 let toastTimer = null;
@@ -2523,6 +2508,45 @@ async function renderListen() {
         } catch {}
       });
     }
+  }
+
+  /* Stations and mood mixes use the actual listening profile, never a fixed artist list. */
+  if (seeds.length) {
+    const { sec, body } = sectionEl('תחנות מומלצות לפי האמנים שלך', 'hscroll');
+    seeds.slice(0, 8).forEach(name => {
+      const favorite = Object.entries(state.favArtists).find(([, a]) => normTxt(a.name) === normTxt(name));
+      const card = stationCard(name, favorite?.[1].avatar || '', () => playFavoriteArtistStation(name, favorite?.[0] || ''));
+      body.appendChild(card);
+      if (!favorite?.[1].avatar) fillArtistPortrait(card, name, favorite?.[0] || '');
+    });
+    box.appendChild(sec);
+
+    const moodSpecs = [
+      { name:'שמחה', query:'שירים שמחים מקפיצים', hue:'linear-gradient(135deg,#ffcb38,#fd4964)' },
+      { name:'עצב', query:'שירים עצובים שקטים', hue:'linear-gradient(135deg,#6876a9,#2d385f)' },
+      { name:'ריכוז', query:'שירים רגועים לריכוז', hue:'linear-gradient(135deg,#97b3a6,#466c6a)' },
+    ];
+    const { sec:moodSec, body:moodBody } = sectionEl('שירים לפי מצב רוח', 'hscroll heroes');
+    moodSpecs.forEach(spec => {
+      const artist = seeds.find(n => state.history.some(t => normTxt(t.artist) === normTxt(n)));
+      const card = heroCard({ title:spec.name, kicker:'מיקס מותאם להאזנה שלך', desc:artist || '',
+        grad:spec.hue, img:'', tap:async () => {
+          toast('בונה את המיקס של ' + spec.name + '...');
+          try {
+            const artists=tasteArtists();
+            const results=await Promise.allSettled(seeds.slice(0,4).map(name =>
+              within(searchMusicCached(name + ' ' + spec.query), 17000)));
+            const seen=new Set(), tracks=[];
+            results.forEach(r => { if(r.status!=='fulfilled') return;
+              r.value.forEach(t => { if(!t.id || seen.has(t.id) || !artistMatchesTaste(t,artists)) return;
+                seen.add(t.id); tracks.push(t); }); });
+            if (tracks.length) playQueue(tracks,0);
+            else toast('אין כרגע שירים מתאימים ל' + spec.name);
+          } catch { toast('המיקס לא זמין כרגע'); }
+        }});
+      moodBody.appendChild(card);
+    });
+    box.appendChild(moodSec);
   }
 
   /* 8. הוצאות אחרונות: big squares */
@@ -3214,9 +3238,6 @@ function renderArtistBody(songs, albums, videos) {
       el.querySelector('.cs').textContent = v.dur ? fmt(v.dur) : '';
       el.addEventListener('click', () => {
         playQueue([v], 0);
-        videoMode = true;
-        document.querySelectorAll('#svToggle .sv').forEach(x => x.classList.toggle('on', x.dataset.mode === 'video'));
-        document.body.classList.add('vid');
         openPlayer();
       });
       body.appendChild(el);
