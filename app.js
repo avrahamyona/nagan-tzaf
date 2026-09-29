@@ -1,4 +1,4 @@
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -185,9 +185,10 @@ async function searchLyrics(q) {
   };
   const matches = [], seen = new Set();
   const add = it => {
+    if (/\(paused\)/i.test(it.trackName || '')) return;
     const line = matchedLine(it);
     const title = it.trackName || '', artist = it.artistName || '';
-    const key = normTxt(artist + '|' + title);
+    const key = normTxt(title).replace(/\s*\(paused\)$/i, '');
     if (line && title && artist && !seen.has(key)) { seen.add(key); matches.push({ title, artist, line }); }
   };
   // The worker may have confirmed lyric matches already. If it cannot find
@@ -197,7 +198,7 @@ async function searchLyrics(q) {
     const r = await fetch(STREAM_API + '/lyrics?q=' + encodeURIComponent(q));
     if (r.ok) (await r.json()).matches?.forEach(x => {
       if (x.title && x.artist && x.line && words.every(w => normTxt(x.line).includes(w))) {
-        const key = normTxt(x.artist + '|' + x.title);
+        const key = normTxt(x.title).replace(/\s*\(paused\)$/i, '');
         if (!seen.has(key)) { seen.add(key); matches.push(x); }
       }
     });
@@ -216,12 +217,15 @@ async function searchLyrics(q) {
       const title = String(item.title || '').replace(/\s*\([^)]*(?:prod\.?|official|lyric|video)[^)]*\)\s*/gi, ' ').trim();
       const parts = title.split(/\s+[-–]\s+/);
       if (parts.length < 2) continue;
-      const artist = parts.shift().trim(), track = parts.join(' - ').trim();
+      const artist = parts.shift().trim(), track = parts.join(' - ').split(/\s*[|｜]\s*/)[0].trim();
       if (!artist || !track) continue;
-      const url = 'https://lrclib.net/api/search?track_name=' + encodeURIComponent(track) + '&artist_name=' + encodeURIComponent(artist);
+      // The video's uploader often lists two artists while LRCLIB has just one.
+      // Search by title, then verify the exact lyric line. An artist filter here
+      // silently rejects valid duets and official Hebrew/romanized releases.
+      const url = 'https://lrclib.net/api/search?track_name=' + encodeURIComponent(track);
       try {
         const r = await fetch(url);
-        if (r.ok) (await r.json()).slice(0, 4).forEach(add);
+        if (r.ok) (await r.json()).slice(0, 16).forEach(add);
       } catch {}
     }
   } catch {}
@@ -258,7 +262,7 @@ const LS_KEY = 'nagan_state_v2';
 let state = {
   playlists: { 'שירים אהובים': [] },
   queue: [], qi: 0,
-  shuffle: false, repeat: 'off',
+  shuffle: false, repeat: 'off', autoNext: true,
   volume: 90,
   lessSuggestions: {}, // videoId -> suppress from auto-suggestions
   fav: {},            // videoId -> true
@@ -280,9 +284,9 @@ function save() {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({
       playlists: state.playlists, queue: state.queue, qi: state.qi,
-      shuffle: state.shuffle, repeat: state.repeat, volume: state.volume,
+      shuffle: state.shuffle, repeat: state.repeat, autoNext: state.autoNext, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums, lessSuggestions: state.lessSuggestions,
-      history: state.history.slice(0, 60), resume: state.resume,
+      history: state.history.slice(0, 60), station: state.station, resume: state.resume,
     }));
   } catch {}
 }
@@ -694,11 +698,16 @@ function artistMatchesTaste(t, artists) {
     (name && normTxt(a.name) && (name === normTxt(a.name) || name.includes(normTxt(a.name)) || normTxt(a.name).includes(name))));
 }
 async function ensureUpNext() {
-  if (upNextFilling || state.station || !state.queue.length) return;
+  if (!state.autoNext || state.station || !state.queue.length) return;
+  if (upNextFilling) {
+    for (let i = 0; i < 30 && upNextFilling; i++) await new Promise(r => setTimeout(r, 500));
+    return;
+  }
   const ahead = state.queue.length - state.qi - 1;
   if (ahead >= 10) return;
   const seed = state.queue[state.queue.length - 1], artists = tasteArtists();
-  if (!seed?.id || !artists.length) return;
+  if (seed?.artist) artists.push({ name: seed.artist, ch: seed.ch || '' });
+  if (!seed?.id) return;
   upNextFilling = true;
   try {
     const inQ = new Set(state.queue.map(t => t.id));
@@ -711,11 +720,14 @@ async function ensureUpNext() {
       const j = await pipedFetch('/streams/' + seed.id, 8000);
       (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).forEach(add);
     } catch {}
-    if (candidates.length < 10 - ahead) {
+    if (candidates.length < 10 - ahead && artists.length) {
       const searches = await Promise.allSettled(artists.slice(0, 3).map(a => within(searchMusicCached(a.name), 9000)));
       searches.forEach(r => { if (r.status === 'fulfilled') r.value.forEach(add); });
     }
-    if (candidates.length) { state.queue.push(...candidates.slice(0, 12 - ahead)); save(); }
+    if (!candidates.length && seed.artist) {
+      try { (await within(searchMusic(seed.artist), 9000)).forEach(add); } catch {}
+    }
+    if (candidates.length) { state.queue.push(...candidates.slice(0, 12 - ahead)); save(); if ($('queueSheet').classList.contains('open')) renderQueue(); }
   } finally { upNextFilling = false; }
 }
 
@@ -723,7 +735,7 @@ async function stationRefill() {
   const st = state.station;
   if (!st) return false;
   const seed = current(), artists = tasteArtists();
-  if (!seed?.id || (!state.station.artist && !artists.length)) return false;
+  if (!seed?.id) return false;
   try {
     const j = await pipedFetch('/streams/' + seed.id, 8000);
     const rel = (j.relatedStreams || []).filter(s => s.url && s.type === 'stream')
@@ -732,6 +744,16 @@ async function stationRefill() {
           ? normTxt(t.artist.replace(/ - Topic$/i, '')) === normTxt(state.station.artist) &&
             (!state.station.chId || !t.ch || t.ch === state.station.chId)
           : artistMatchesTaste(t, artists)));
+    if (!rel.length) {
+      const name = state.station.artist || seed.artist;
+      if (name) {
+        try {
+          const found = await within(searchMusic(name), 9000);
+          for (const t of found) if (t.id && !state.queue.some(q => q.id === t.id) && !state.lessSuggestions?.[t.id] &&
+            (state.station.artist ? normTxt(t.artist.replace(/ - Topic$/i, '')) === normTxt(state.station.artist) : normTxt(t.artist) === normTxt(name))) rel.push(t);
+        } catch {}
+      }
+    }
     if (!rel.length) return false;
     if (state.station.artist) {
       for (let i = rel.length - 1; i > 0; i--) {
@@ -758,6 +780,10 @@ async function advance(dir, auto) {
         if (ok) { n = state.qi; } // stay on last index; refill appended, +1 below
         n = state.qi + dir;
         if (n >= state.queue.length) { syncPlayUI(true); return; }
+      } else if (auto && state.autoNext) {
+        await ensureUpNext();
+        n = state.qi + dir;
+        if (n >= state.queue.length) { syncPlayUI(true); return; }
       } else if (state.repeat === 'all' || !auto) n = 0;
       else { syncPlayUI(true); return; }
     }
@@ -766,7 +792,8 @@ async function advance(dir, auto) {
   state.qi = n;
   const t = current();
   if (t) pushHistory(t);
-  loadTrack(t); paintNow(); save();
+  loadTrack(t); paintNow(); save(); ensureUpNext();
+  if ($('queueSheet').classList.contains('open')) renderQueue();
 }
 const next = () => advance(1, false);
 const prev = () => {
@@ -853,12 +880,14 @@ function registerMediaControls() {
   const actions = [
     ['play', () => { userPaused = false; if (activeAudio()) M().play().catch(() => {}); else ytReady && yt.playVideo(); }],
     ['pause', () => { userPaused = true; if (activeAudio()) M().pause(); else ytReady && yt.pauseVideo(); }],
-    ['nexttrack', next], ['previoustrack', prev],
-    ['seekto', d => {
+    ['nexttrack', next], ['previoustrack', () => advance(-1, false)],
+    // iOS can prefer its seek UI over next/previous when seekto is exposed.
+    // Leave arbitrary seeking in the app, but do not advertise it on its lock screen.
+    ...(!IS_IOS ? [['seekto', d => {
       if (d.seekTime == null) return;
       if (activeAudio()) M().currentTime = d.seekTime;
       else if (ytReady) yt.seekTo(d.seekTime, true);
-    }],
+    }]] : []),
   ];
   for (const [action, handler] of actions) {
     try { navigator.mediaSession.setActionHandler(action, handler); }
@@ -890,6 +919,7 @@ setInterval(() => {
     $('tCur').textContent = fmt(c);
     $('tRem').textContent = d > 0 ? fmtRem(c, d) : '-0:00';
   }
+  if ($('queueSheet').classList.contains('open')) syncQueueTransport(paused);
   if (d > 2 && c >= d - 0.7 && !paused) {
     if (!endArmed) { endArmed = true; setTimeout(() => { endArmed = false; }, 3000); advance(1, true); }
   }
@@ -905,6 +935,7 @@ function syncPlayUI(paused) {
   setIcon($('mPlay'), paused ? 'play' : 'pause');
   setIcon($('cPlay'), paused ? 'play' : 'pause');
   try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = paused ? 'paused' : 'playing'; } catch {}
+  if ($('queueSheet').classList.contains('open')) syncQueueTransport(paused);
   paintPlayingRows();
 }
 function tintPlayer(img) {
@@ -1167,11 +1198,11 @@ function shareSong(t) {
 $('ssShare').addEventListener('click', () => { const t = sheetTrack; closeSheet('songSheet'); if (t) shareSong(t); });
 $('ssQueueNext').addEventListener('click', () => {
   const t = sheetTrack; closeSheet('songSheet'); if (!t || !current()) return;
-  state.queue.splice(state.qi + 1, 0, t); save(); toast('נוסף להבא בתור');
+  state.queue.splice(state.qi + 1, 0, t); save(); if ($('queueSheet').classList.contains('open')) renderQueue(); toast('נוסף להבא בתור');
 });
 $('ssQueueLast').addEventListener('click', () => {
   const t = sheetTrack; closeSheet('songSheet'); if (!t || !current()) return;
-  state.queue.push(t); save(); toast('נוסף לסוף התור');
+  state.queue.push(t); save(); if ($('queueSheet').classList.contains('open')) renderQueue(); toast('נוסף לסוף התור');
 });
 $('ssStation').addEventListener('click', async () => {
   const t = sheetTrack; closeSheet('songSheet'); if (!t) return;
@@ -1221,35 +1252,138 @@ $('addNew').addEventListener('click', () => {
   save(); closeAllSheets(); toast(`נוסף ל"${name}"`);
 });
 
-/* queue sheet: history + now playing + up next (Apple Music "בא בתור") */
+/* The player queue is a full-height overlay with controls kept available below it. */
 const qHead = txt => { const h = document.createElement('div'); h.className = 'qsect'; h.textContent = txt; return h; };
-$('cQueue').addEventListener('click', () => {
-  const box = $('queueList'); box.innerHTML = '';
-  const cur = current();
-  const hist = state.history.filter(x => !cur || x.id !== cur.id).slice(0, 10);
-  const up = state.queue.slice(state.qi + 1);
-  if (hist.length) {
-    box.appendChild(qHead('הושמע'));
-    hist.slice().reverse().forEach(t => {
-      const r = trackRow(t, { onPlay: () => { playQueue([t, cur, ...up].filter(Boolean), 0); closeSheet('queueSheet'); } });
-      r.classList.add('qhist');
-      box.appendChild(r);
-    });
-  }
-  if (cur) {
-    box.appendChild(qHead('מושמע עכשיו'));
-    box.appendChild(trackRow(cur, { onPlay: () => closeSheet('queueSheet') }));
-  }
-  box.appendChild(qHead('הבא בתור'));
-  if (!up.length && !cur) { box.innerHTML = '<div class="empty"><p>התור ריק</p></div>'; }
-  else if (!up.length) { const e = document.createElement('div'); e.className = 'empty'; e.innerHTML = '<p>אין עוד שירים בתור</p>'; box.appendChild(e); }
-  up.forEach((t, i) => box.appendChild(trackRow(t, {
-    onPlay: () => { state.qi = state.qi + 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); closeSheet('queueSheet'); },
-  })));
-  openSheet('queueSheet');
+function queueRowOptions(row, t) {
+  const dot = row.querySelector('.dots');
+  if (!dot) return;
+  const replacement = dot.cloneNode(true);
+  dot.replaceWith(replacement);
+  replacement.addEventListener('click', e => {
+    e.stopPropagation();
+    closeSheet('queueSheet'); setTimeout(() => openSongSheet(t), 250);
+  });
+}
+function renderQueue() {
+  const box = $('queueList'), cur = current(); box.replaceChildren();
+  $('queueTitle').textContent = cur?.title || '';
+  $('queueArtist').textContent = cur?.artist || '';
+  $('queueArt').src = cur?.id ? sqThumb(cur.id, 'hq') : '';
+  $('queueArt').onerror = () => { if (cur?.id && $('queueArt').dataset.fallback !== cur.id) { $('queueArt').dataset.fallback = cur.id; $('queueArt').src = thumb(cur.id); } };
+  $('queueHero').classList.toggle('hidden', !cur);
+  $('queueFav').classList.toggle('on', !!(cur && state.fav[cur.id]));
+  setIcon($('queueFav'), cur && state.fav[cur.id] ? 'star-fill' : 'star');
+  for (const [id, on] of [['queueShuffle', state.shuffle], ['queueRepeat', state.repeat !== 'off'], ['queueAuto', state.autoNext], ['queueMix', false]])
+    $(id).classList.toggle('on', !!on);
+  setIcon($('queueRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
+  box.appendChild(qHead('תור'));
+  const ahead = state.queue.slice(state.qi + 1);
+  ahead.forEach((t, i) => {
+    const row = trackRow(t, { onPlay: () => {
+      if (row.classList.contains('swiped')) { row.classList.remove('swiped'); return; }
+      state.qi += 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); renderQueue(); ensureUpNext();
+    } });
+    row.classList.add('qnext'); queueRowOptions(row, t);
+    const remove = document.createElement('button'); remove.className = 'qremove'; remove.setAttribute('aria-label', 'הסר מהתור'); remove.textContent = '✕';
+    remove.addEventListener('click', e => { e.stopPropagation(); state.queue.splice(state.qi + 1 + i, 1); save(); renderQueue(); });
+    row.appendChild(remove);
+    let touchStart; row.addEventListener('touchstart', e => { if (e.touches.length === 1) touchStart = {x:e.touches[0].clientX,y:e.touches[0].clientY}; }, {passive:true});
+    row.addEventListener('touchend', e => { if (!touchStart) return; const t=e.changedTouches[0];
+      if (t.clientX - touchStart.x > 55 && Math.abs(t.clientY - touchStart.y)<45) row.classList.add('swiped');
+      if (touchStart.x - t.clientX > 55 && Math.abs(t.clientY - touchStart.y)<45) row.classList.remove('swiped'); touchStart=null; }, {passive:true});
+    const handle = document.createElement('span'); handle.className = 'qhandle'; handle.textContent = '☰'; handle.setAttribute('aria-label', 'גרור לשינוי סדר');
+    row.appendChild(handle); attachQueueDrag(handle, row, state.qi + 1 + i);
+    box.appendChild(row);
+  });
+  const add = document.createElement('button'); add.className = 'qadd'; add.innerHTML = '<span class="qadd-icon">+</span><span>הוספת שירים לתור</span>';
+  add.addEventListener('click', () => { closeSheet('queueSheet'); switchTab('search'); $('searchInput').focus(); }); box.appendChild(add);
+  const label = document.createElement('div'); label.className = 'qautonote';
+  label.textContent = state.autoNext ? '∞ הפעלה אוטומטית · בחירת מוזיקה דומה כשזמינה' : '∞ הפעלה אוטומטית כבויה'; box.appendChild(label);
+  $('queueVol').value = state.volume;
+  syncQueueTransport();
+}
+function syncQueueTransport(knownPaused) {
+  const paused = knownPaused == null ? (activeAudio() ? M().paused : (ytReady && yt.getPlayerState ? yt.getPlayerState() !== YT.PlayerState.PLAYING : true)) : knownPaused;
+  setIcon($('queuePlay'), paused ? 'play' : 'pause');
+  if (!$('queueSeek').matches(':active')) { $('queueSeek').value = $('seek').value; $('queueSeek').style.setProperty('--queue-progress', (+$('seek').value / 10) + '%'); }
+  $('queueElapsed').textContent = $('tCur').textContent;
+  $('queueRemaining').textContent = $('tRem').textContent;
+}
+$('cQueue').addEventListener('click', () => { renderQueue(); openSheet('queueSheet'); });
+$('queueClose').addEventListener('click', () => closeSheet('queueSheet'));
+$('queueMore').addEventListener('click', () => { const t=current(); if (t) { closeSheet('queueSheet'); setTimeout(() => openSongSheet(t), 250); } });
+$('queueFav').addEventListener('click', () => { if (current()) { toggleFav(current()); renderQueue(); } });
+function holdSkip(btn, direction) {
+  let timer = null, running = false, rewind = null, started = 0, finished = false;
+  const stop = e => {
+    if (finished) return; finished = true;
+    clearTimeout(timer); timer = null;
+    if (rewind) { clearInterval(rewind); rewind = null; }
+    if (running) {
+      if (activeAudio()) M().playbackRate = 1;
+      else if (ytReady) { try { yt.setPlaybackRate(1); } catch {} }
+    }
+    const wasLong = running; running = false;
+    if (!wasLong && e?.type === 'pointerup' && Date.now() - started < 700) {
+      if (direction > 0) next(); else advance(-1, false);
+    }
+  };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); finished = false; started = Date.now();
+    if (btn.setPointerCapture) btn.setPointerCapture(e.pointerId);
+    timer = setTimeout(() => {
+      running = true;
+      if (direction > 0) {
+        if (activeAudio()) M().playbackRate = 2;
+        else if (ytReady) { try { yt.setPlaybackRate(2); } catch {} }
+      } else {
+        // HTML media playbackRate=-2 is unsupported on iOS; rewind by seeking.
+        rewind = setInterval(() => {
+          if (activeAudio()) M().currentTime = Math.max(0, M().currentTime - .2);
+          else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - .2), true);
+        }, 100);
+      }
+    }, 300);
+  });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(event, stop);
+  btn.addEventListener('click', e => {
+    if (e.detail) { e.preventDefault(); return; }
+    if (direction > 0) next(); else advance(-1, false);
+  });
+}
+for (const [id, direction] of [['queuePrev', -1], ['queueNext', 1], ['cPrev', -1], ['cNext', 1]]) holdSkip($(id), direction);
+$('queuePlay').addEventListener('click', () => { togglePlay(); setTimeout(syncQueueTransport, 150); });
+$('queueSeek').addEventListener('input', e => { e.target.style.setProperty('--queue-progress', (+e.target.value / 10) + '%'); $('seek').value = e.target.value; $('seek').dispatchEvent(new Event('input', { bubbles:true })); });
+$('queueSeek').addEventListener('change', e => { $('seek').value = e.target.value; $('seek').dispatchEvent(new Event('change', { bubbles:true })); });
+$('queueLyrics').addEventListener('click', () => { closeSheet('queueSheet'); openLyrics(); });
+$('queueVol').addEventListener('input', e => { $('vol').value = e.target.value; $('vol').dispatchEvent(new Event('input', { bubbles: true })); });
+$('queueShuffle').addEventListener('click', () => { $('cShuffle').click(); renderQueue(); });
+$('queueRepeat').addEventListener('click', () => { $('cRepeat').click(); renderQueue(); });
+$('queueAuto').addEventListener('click', () => {
+  state.autoNext = !state.autoNext; save(); renderQueue();
+  if (state.autoNext) ensureUpNext();
 });
-
-
+$('queueMix').addEventListener('click', () => {
+  toast('מעבר חלק עדיין לא זמין');
+});
+function attachQueueDrag(handle, row, sourceIndex) {
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); handle.setPointerCapture(e.pointerId);
+    const y = e.clientY; row.classList.add('qdragging');
+    const end = ev => {
+      handle.removeEventListener('pointerup', end);
+      if (Math.abs(ev.clientY - y) < 18) { row.classList.remove('qdragging'); return; }
+      const rows = [...$('queueList').querySelectorAll('.qnext:not(.qdragging)')];
+      const target = rows.findIndex(r => ev.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+      let dest = state.qi + 1 + (target < 0 ? rows.length : target);
+      row.classList.remove('qdragging');
+      const [item] = state.queue.splice(sourceIndex, 1);
+      if (dest > sourceIndex) dest--;
+      state.queue.splice(Math.min(dest, state.queue.length), 0, item); save(); renderQueue();
+    };
+    handle.addEventListener('pointerup', end);
+  });
+}
 /* share: deep link into OUR app (?song=<id>) - the future app share mechanism */
 $('cOpenYT').addEventListener('click', async () => {
   const t = current(); if (!t) return;
@@ -1295,8 +1429,6 @@ $('mini').addEventListener('click', e => { if (!e.target.closest('.mbtn')) openP
 $('mPlay').addEventListener('click', togglePlay);
 $('cPlay').addEventListener('click', togglePlay);
 $('mNext').addEventListener('click', next);
-$('cNext').addEventListener('click', next);
-$('cPrev').addEventListener('click', prev);
 $('pFav').addEventListener('click', () => { const t = current(); if (t) toggleFav(t); });
 $('pDots').addEventListener('click', () => { const t = current(); if (t) openSongSheet(t); });
 $('pArtist').addEventListener('click', () => openSongDestinationSheet(current()));

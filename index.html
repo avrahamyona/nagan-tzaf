@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="icon-192.png?v=49">
 <link rel="apple-touch-icon" href="icon-180.png?v=49">
 <title>Avi Music</title>
-<link rel="stylesheet" href="style.css?v=70">
+<link rel="stylesheet" href="style.css?v=72">
 </head>
 <body>
 
@@ -253,11 +253,30 @@
 
 <!-- ============ תור ההשמעה ============ -->
 <div id="queueSheet" class="sheetbox hidden">
-  <div class="sheethead">
-    <h3>הבא בתור</h3>
-    <button class="xbtn" data-close="queueSheet"><svg><use href="#i-x"/></svg></button>
+  <div class="queuegrab" aria-hidden="true"></div>
+  <div class="queuehero" id="queueHero">
+    <div class="queuehero-meta"><strong id="queueTitle"></strong><span id="queueArtist"></span></div>
+    <button id="queueFav" class="ibtn" aria-label="אהבתי"><svg><use href="#i-star"/></svg></button>
+    <button id="queueMore" class="ibtn" aria-label="אפשרויות שיר"><svg><use href="#i-dots"/></svg></button>
+    <img id="queueArt" alt="">
+  </div>
+  <div class="queuemodes" aria-label="מצבי השמעה">
+    <button id="queueShuffle" aria-label="השמעה אקראית"><svg><use href="#i-shuffle"/></svg></button>
+    <button id="queueRepeat" aria-label="השמעה חוזרת"><svg><use href="#i-repeat"/></svg></button>
+    <button id="queueAuto" aria-label="הפעלה אוטומטית"><span>∞</span></button>
+    <button id="queueMix" aria-label="מעבר שירים חלק, עדיין לא זמין" disabled><span class="queue-mix-icon">◉◉</span></button>
   </div>
   <div id="queueList" class="list sheetlist"></div>
+  <div class="queue-footer" id="queueFooter">
+    <div class="queue-timeline"><input id="queueSeek" type="range" min="0" max="1000" value="0" aria-label="מיקום בשיר"><div class="queue-times"><span id="queueElapsed">0:00</span><span id="queueRemaining">-0:00</span></div></div>
+    <div class="queue-transport">
+      <button id="queuePrev" aria-label="השיר הקודם"><svg><use href="#i-prev"/></svg></button>
+      <button id="queuePlay" aria-label="נגן או השהה"><svg><use href="#i-play"/></svg></button>
+      <button id="queueNext" aria-label="השיר הבא"><svg><use href="#i-next"/></svg></button>
+    </div>
+    <div class="queue-volume"><svg><use href="#i-vol-high"/></svg><input id="queueVol" type="range" min="0" max="100" aria-label="עוצמת שמע" dir="rtl"><svg><use href="#i-vol-low"/></svg></div>
+    <div class="queue-bottom"><button id="queueLyrics" aria-label="מילים"><svg><use href="#i-lyrics"/></svg></button><button id="queueClose" aria-label="סגור תור"><svg><use href="#i-queue"/></svg></button></div>
+  </div>
 </div>
 
 <!-- ============ מילים ============ -->
@@ -317,6 +336,6 @@
 <div id="scrim"></div>
 <div id="toast" class="hidden"></div>
 </div>
-<script src="app.js?v=71"></script>
+<script src="app.js?v=72"></script>
 </body>
 </html>

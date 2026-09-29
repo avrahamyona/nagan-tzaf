@@ -862,3 +862,77 @@ html.dark .lyrhead button { color: #f5f5f7; }
 .artisthit .artistph { width:64px; height:64px; flex:0 0 64px; border-radius:50%; background:var(--card2); color:var(--dim); display:grid; place-items:center; font-size:27px; font-weight:700; }
 
 .radiohero .rh-placeholder { width:100%; aspect-ratio:16/9; background:linear-gradient(145deg,#6e1235,#312559 58%,#171723); }
+
+/* Up Next: a full-player queue, keeping playback, timeline and volume in place. */
+#queueSheet { --qink:#fff; --qsoft:rgba(255,255,255,.57); --qwash:var(--np-dark1, #684632);
+  inset:0; max-height:none; border-radius:0; background:linear-gradient(165deg,var(--qwash),var(--np-dark2,#553822));
+  color:var(--qink); z-index:31; padding:env(safe-area-inset-top) 24px calc(14px + env(safe-area-inset-bottom)); }
+#queueSheet .queuegrab { width:40px; height:5px; border-radius:4px; background:rgba(255,255,255,.35); align-self:center; flex:none; margin:6px 0 27px; }
+#queueSheet .queuehero { display:flex; align-items:center; gap:15px; min-height:72px; flex:none; }
+#queueSheet .queuehero img { order:-1; width:64px; height:64px; flex:none; object-fit:cover; border-radius:9px; }
+#queueSheet .queuehero-meta { flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
+#queueSheet .queuehero-meta strong { font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+#queueSheet .queuehero-meta span { font-size:15px; color:var(--qsoft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+#queueSheet .queuehero .ibtn { color:var(--qink); padding:6px; }
+#queueSheet .queuehero .ibtn svg { width:25px; height:25px; }
+#queueSheet .queuemodes { display:flex; gap:8px; flex:none; margin:27px 0 13px; }
+#queueSheet .queuemodes button { height:42px; flex:1; border-radius:23px; background:rgba(255,255,255,.13); color:var(--qink); display:grid; place-items:center; }
+#queueSheet .queuemodes button.on { background:rgba(255,255,255,.63); color:#503b30; }
+#queueSheet .queuemodes svg { width:23px; height:23px; }
+#queueSheet .queuemodes span { font-size:30px; line-height:1; }
+#queueSheet .queuemodes .queue-mix-icon { font-size:19px; letter-spacing:-7px; padding-inline-end:7px; }
+#queueList { flex:1; min-height:0; overflow-y:auto; padding:0 2px 10px; }
+#queueList .qsect { color:var(--qsoft); margin:18px 2px 9px; font-size:16px; font-weight:600; }
+#queueList .row { border:0; min-height:60px; gap:11px; padding:5px 0; color:#fff; }
+#queueList .row img { width:49px; height:49px; border-radius:7px; }
+#queueList .row .t { font-size:17px; }
+#queueList .row .a { color:var(--qsoft); font-size:15px; }
+#queueList .row .dots { color:var(--qink); }
+#queueList .row .dur { display:none; }
+#queueList .row.qhist { opacity:.65; }
+#queueList .row.qnow .t { color:#fff; }
+#queueList .qhandle { color:rgba(255,255,255,.55); font-size:19px; padding:8px; cursor:grab; touch-action:none; }
+#queueList .qdragging { opacity:.55; }
+#queueList .qadd { color:#fff; display:flex; align-items:center; gap:14px; padding:12px 2px; width:100%; text-align:right; font-size:20px; }
+#queueList .qadd-icon { width:48px; height:48px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.14); font-size:32px; font-weight:300; }
+#queueList .qautonote { text-align:center; color:rgba(255,255,255,.45); margin:20px 0 8px; font-size:14px; }
+#queueSheet .queue-footer { flex:none; padding-top:5px; }
+#queueSheet .queue-timeline { border-top:6px solid rgba(255,255,255,.42); display:flex; justify-content:space-between; padding-top:10px; direction:ltr; font-size:12px; color:var(--qsoft); }
+#queueSheet .queue-transport { display:flex; align-items:center; justify-content:space-around; padding:14px 10px 10px; }
+#queueSheet .queue-transport button { color:#fff; padding:10px; }
+#queueSheet .queue-transport svg { width:34px; height:34px; }
+#queueSheet #queuePlay svg { width:49px; height:49px; }
+#queueSheet .queue-volume { direction:ltr; display:flex; align-items:center; gap:12px; padding:4px 9px; }
+#queueSheet .queue-volume svg { width:16px; height:16px; color:var(--qsoft); }
+#queueSheet #queueVol { flex:1; min-width:0; accent-color:#fff; direction:rtl; }
+#queueSheet .queue-bottom { display:flex; justify-content:space-between; padding:10px 7px 0; }
+#queueSheet .queue-bottom button { width:44px; height:44px; display:grid; place-items:center; color:var(--qsoft); }
+#queueSheet .queue-bottom svg { width:24px; height:24px; }
+#queueSheet #queueClose { border-radius:50%; background:rgba(255,255,255,.55); color:#4b3427; }
+@media(min-width:820px) { #queueSheet { left:auto; width:min(540px,100vw); box-shadow:-10px 0 30px rgba(0,0,0,.25); } }
+#queueList .qnext { position:relative; overflow:hidden; transition:padding-left .18s; }
+#queueList .qnext.swiped { padding-left:65px; }
+#queueList .qremove { display:none; position:absolute; left:2px; top:12px; height:42px; width:50px; border-radius:22px; background:#ee3b4c; color:white; font-size:24px; }
+#queueList .qnext.swiped .qremove { display:block; }
+#queueSheet .queue-transport, #queueSheet .queue-bottom { direction:ltr; }
+#queueSheet .queuemodes button:disabled { opacity:.35; cursor:not-allowed; }
+#queueSheet .queue-transport #queueNext svg { transform:scaleX(-1); }
+#queueSheet .queue-transport #queuePrev svg { transform:scaleX(-1); }
+#queueSheet .queue-timeline { display:block; border:0; padding:0; }
+#queueSheet #queueSeek { display:block; width:100%; margin:0; height:6px; border-radius:7px; border:0; appearance:none; -webkit-appearance:none; direction:ltr; background:linear-gradient(to right,#fff var(--queue-progress,0%),rgba(255,255,255,.36) var(--queue-progress,0%)); }
+#queueSheet #queueSeek::-webkit-slider-thumb { -webkit-appearance:none; width:0; height:0; }
+#queueSheet #queueSeek::-moz-range-thumb { width:0; height:0; border:0; }
+#queueSheet .queue-times { display:flex; justify-content:space-between; padding-top:10px; }
+#queueSheet .queue-footer { padding-top:0; }
+#queueSheet .queue-transport { padding:20px 8px 12px; }
+#queueSheet .queue-volume { padding:9px 9px 7px; }
+#queueSheet .queue-bottom { padding:16px 7px 0; }
+/* Queue screenshot: current track lives in the header, not a duplicate list row. */
+#queueSheet .queuegrab { margin-bottom:39px; }
+#queueSheet .queuemodes { margin-top:23px; margin-bottom:16px; }
+#queueList .qsect:first-child { margin-top:8px; }
+#queueSheet #queueVol { -webkit-appearance:none; appearance:none; height:5px; border-radius:8px; background:linear-gradient(to right,rgba(255,255,255,.85) 0%,rgba(255,255,255,.85) 72%,rgba(255,255,255,.3) 72%); }
+#queueSheet #queueVol::-webkit-slider-thumb { -webkit-appearance:none; width:0; height:0; }
+#queueSheet #queueVol::-moz-range-thumb { width:0; height:0; border:0; }
+#queueSheet .queuemodes button { height:40px; }
+#queueSheet .queuemodes button.on { background:rgba(255,255,255,.52); }
