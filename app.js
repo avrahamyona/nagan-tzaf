@@ -1,4 +1,4 @@
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v79';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -2036,6 +2036,60 @@ function activateTab(b) {
   switchTab(b.dataset.tab);
 }
 document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => activateTab(b)));
+/* Pull down to dismiss the topmost overlay. A scrollable child must be at its top;
+   controls and the queue keep their own gestures. */
+(function globalSwipeDismiss() {
+  let gesture = null;
+  const scrollableParent = (target, boundary) => {
+    for (let node = target; node && node !== boundary; node = node.parentElement) {
+      if (node.scrollHeight > node.clientHeight + 3 &&
+          /auto|scroll/.test(getComputedStyle(node).overflowY)) return node;
+    }
+    return null;
+  };
+  document.addEventListener('touchstart', e => {
+    gesture = null;
+    if (e.touches.length !== 1) return;
+    const target = e.target;
+    if (target.closest('input, textarea, select, video, iframe, .qhandle, .swipe-track, .volrow, .karaoke')) return;
+    const openSheets = [...document.querySelectorAll('.sheetbox.open')];
+    const sheet = openSheets.at(-1);
+    if (sheet) {
+      if (sheet.id === 'queueSheet' || !sheet.contains(target)) return;
+      const scroller = scrollableParent(target, sheet);
+      if (scroller && scroller.scrollTop > 2) return;
+      gesture = { x:e.touches[0].clientX, y:e.touches[0].clientY, overlay:sheet, scroller,
+        close:()=>closeSheet(sheet.id) };
+      return;
+    }
+    const lyrics = $('lyrView');
+    if (lyrics.classList.contains('open') === false) {
+      // The full player already has its own vertical drag behavior.
+      if (!$('player').classList.contains('hidden')) return;
+      const page = [...document.querySelectorAll('.page.on')].at(-1);
+      if (!page || !page.contains(target)) return;
+      const scroller = scrollableParent(target, page);
+      if (scroller && scroller.scrollTop > 2) return;
+      gesture = { x:e.touches[0].clientX, y:e.touches[0].clientY, overlay:page, scroller,
+        close:()=>closePage(page.id) };
+    } else if (lyrics.contains(target)) {
+      const scroller = scrollableParent(target, lyrics);
+      if (scroller && scroller.scrollTop > 2) return;
+      gesture = { x:e.touches[0].clientX, y:e.touches[0].clientY, overlay:lyrics, scroller,
+        close:closeLyrics };
+    }
+  }, { passive:true });
+  document.addEventListener('touchend', e => {
+    const start = gesture; gesture = null;
+    if (!start || e.changedTouches.length !== 1 || !start.overlay.isConnected) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (start.scroller && start.scroller.scrollTop > 2) return;
+    if (dy > 75 && dy > Math.abs(dx) * 1.35) start.close();
+  }, { passive:true });
+  document.addEventListener('touchcancel', () => { gesture = null; }, { passive:true });
+})();
+
 /* iPhone RTL edge-back: swipe from the right edge toward the left on a detail page. */
 (function rtlEdgeBack() {
   let start = null;
