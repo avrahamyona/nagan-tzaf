@@ -1,4 +1,4 @@
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -720,17 +720,18 @@ function artistMatchesTaste(t, artists) {
     (name && normTxt(a.name) && (name === normTxt(a.name) || name.includes(normTxt(a.name)) || normTxt(a.name).includes(name))));
 }
 async function ensureUpNext() {
-  if (!state.autoNext || state.station || !state.queue.length) return;
+  if (!state.autoNext || !state.queue.length) return;
   if (upNextFilling) {
-    for (let i = 0; i < 30 && upNextFilling; i++) await new Promise(r => setTimeout(r, 500));
-    return;
+    return; // the in-flight refill will finish against the current queue state
   }
   const ahead = state.queue.length - state.qi - 1;
   if (ahead >= 10) return;
+  const desired = 10 - ahead;
   const seed = state.queue[state.queue.length - 1], artists = tasteArtists();
-  if (seed?.artist) artists.push({ name: seed.artist, ch: seed.ch || '' });
+  if (seed?.artist) artists.push({ name: seed.artist, ch: seed.ch || '', weight: 1 });
   if (!seed?.id) return;
   upNextFilling = true;
+  const queueToken = state.queue;
   try {
     const inQ = new Set(state.queue.map(t => t.id));
     const candidates = [];
@@ -742,15 +743,24 @@ async function ensureUpNext() {
       const j = await pipedFetch('/streams/' + seed.id, 8000);
       (j.relatedStreams || []).filter(s => s.url && s.type === 'stream').map(mapStream).forEach(add);
     } catch {}
-    if (candidates.length < 10 - ahead && artists.length) {
-      const searches = await Promise.allSettled(artists.slice(0, 3).map(a => within(searchMusicCached(a.name), 9000)));
+    if (candidates.length < desired && artists.length) {
+      const searches = await Promise.allSettled(artists.slice(0, 5).map(a => within(searchMusicCached(a.name), 9000)));
       searches.forEach(r => { if (r.status === 'fulfilled') r.value.forEach(add); });
     }
     if (!candidates.length && seed.artist) {
       try { (await within(searchMusic(seed.artist), 9000)).forEach(add); } catch {}
     }
-    if (candidates.length) { state.queue.push(...candidates.slice(0, 12 - ahead)); save(); if ($('queueSheet').classList.contains('open')) renderQueue(); }
-  } finally { upNextFilling = false; }
+    // Do not use stale queue offsets if the user changed tracks during network calls.
+    if (state.autoNext && state.queue === queueToken && candidates.length) {
+      const nowAhead = Math.max(0, state.queue.length - state.qi - 1);
+      const fresh = candidates.filter(t => !state.queue.some(q => q.id === t.id));
+      state.queue.push(...fresh.slice(0, Math.max(0, 10 - nowAhead)));
+      save(); if ($('queueSheet').classList.contains('open')) renderQueue();
+    }
+  } finally {
+    upNextFilling = false;
+    if (state.autoNext && state.queue !== queueToken) ensureUpNext();
+  }
 }
 
 async function stationRefill() {
@@ -1060,7 +1070,65 @@ function trackRow(t, opts = {}) {
   }
   row.addEventListener('click', () => opts.onPlay && opts.onPlay());
   row.querySelector('.dots').addEventListener('click', e => { e.stopPropagation(); openSongSheet(t, opts.sheet || {}); });
+  if (opts.queueSwipe && t.id) attachTrackSwipe(row, t);
   return row;
+}
+// In search/library rows, swipe toward the left for play-next and toward
+// the right for add-to-end / remove. Actions remain explicit buttons, not
+// automatic side effects of brushing across a row.
+function attachTrackSwipe(row, t) {
+  row.classList.add('swipe-track');
+  const actions = document.createElement('div'); actions.className = 'swipe-actions';
+  const nextBtn = document.createElement('button'); nextBtn.className = 'swipe-next';
+  nextBtn.textContent = '+'; nextBtn.setAttribute('aria-label', 'נגן הבא');
+  const endBtn = document.createElement('button'); endBtn.className = 'swipe-end';
+  endBtn.textContent = '↓'; endBtn.setAttribute('aria-label', 'הוסף לסוף התור');
+  const removeBtn = document.createElement('button'); removeBtn.className = 'swipe-remove';
+  removeBtn.textContent = '▤'; removeBtn.setAttribute('aria-label', 'הסר מהספריה');
+  // Removal is only valid for a saved-library row, never a public search hit.
+  if (state.fav?.[t.id] || (state.playlists && Object.values(state.playlists).some(list => list.some(x => x.id === t.id))))
+    actions.append(removeBtn);
+  actions.append(endBtn, nextBtn); row.append(actions);
+  const queueIt = placement => {
+    if (!current()) { toast('התחל לנגן שיר לפני הוספה לתור'); return; }
+    if (placement === 'next') state.queue.splice(state.qi + 1, 0, t);
+    else state.queue.push(t);
+    save(); row.classList.remove('swipe-open-start', 'swipe-open-end');
+    if ($('queueSheet').classList.contains('open')) renderQueue();
+    toast(placement === 'next' ? 'נוסף להבא בתור' : 'נוסף לסוף התור');
+  };
+  nextBtn.addEventListener('click', e => { e.stopPropagation(); queueIt('next'); });
+  endBtn.addEventListener('click', e => { e.stopPropagation(); queueIt('end'); });
+  removeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (state.fav?.[t.id]) delete state.fav[t.id];
+    state.playlists && Object.values(state.playlists).forEach(list => {
+      for (let i = list.length - 1; i >= 0; i--) if (list[i].id === t.id) list.splice(i, 1);
+    });
+    save(); row.remove(); toast('הוסר מהספריה');
+  });
+  let start = null, suppressClick = false;
+  row.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) start = { x:e.touches[0].clientX, y:e.touches[0].clientY };
+  }, { passive:true });
+  row.addEventListener('touchend', e => {
+    if (!start) return;
+    const x = e.changedTouches[0].clientX - start.x, y = e.changedTouches[0].clientY - start.y;
+    start = null;
+    if (Math.abs(x) < 48 || Math.abs(x) < Math.abs(y) * 1.2) return;
+    suppressClick = true; setTimeout(() => { suppressClick = false; }, 350);
+    row.classList.toggle('swipe-open-start', x < 0);
+    row.classList.toggle('swipe-open-end', x > 0);
+  }, { passive:true });
+  row.addEventListener('click', e => {
+    if (e.target.closest('.swipe-actions')) return;
+    if (suppressClick) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+    if (row.classList.contains('swipe-open-start') || row.classList.contains('swipe-open-end')) {
+      if (!e.target.closest('.swipe-actions')) {
+        e.stopImmediatePropagation(); row.classList.remove('swipe-open-start','swipe-open-end');
+      }
+    }
+  }, true);
 }
 function paintPlayingRows() {
   const cur = current();
@@ -1328,7 +1396,7 @@ function renderQueue() {
   const add = document.createElement('button'); add.className = 'qadd'; add.innerHTML = '<span class="qadd-icon">+</span><span>הוספת שירים לתור</span>';
   add.addEventListener('click', () => { closeSheet('queueSheet'); switchTab('search'); $('searchInput').focus(); }); box.appendChild(add);
   const label = document.createElement('div'); label.className = 'qautonote';
-  label.textContent = state.autoNext ? '∞ הפעלה אוטומטית · בחירת מוזיקה דומה כשזמינה' : '∞ הפעלה אוטומטית כבויה'; box.appendChild(label);
+  label.textContent = state.autoNext ? '∞ הפעלה אינסופית · שמירת עד 10 שירים בהמשך התור' : '∞ הפעלה אינסופית כבויה'; box.appendChild(label);
   $('queueVol').value = state.volume;
   syncQueueTransport();
 }
@@ -2705,7 +2773,7 @@ async function runSearch(q, pill) {
     const seen = new Set(), unique = saved.filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
     box.replaceChildren();
     if (!unique.length) box.innerHTML = '<div class="empty"><p>לא נמצאו שירים בספריה.</p></div>';
-    else unique.forEach((t, i) => box.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(unique, i) })));
+    else unique.forEach((t, i) => box.appendChild(trackRow(t, { artistLink: true, queueSwipe: true, onPlay: () => playQueue(unique, i) })));
     return;
   }
   if (vid) {
@@ -2771,7 +2839,7 @@ async function runSearch(q, pill) {
       if (!songs.length) return;
       const h = document.createElement('h2'); h.className = 'secttl js-songs'; h.textContent = 'שירים';
       const frag = document.createDocumentFragment();
-      songs.slice(0, 20).forEach((t, i) => frag.appendChild(trackRow(t, { artistLink: true, onPlay: () => playQueue(songs, i) })));
+      songs.slice(0, 20).forEach((t, i) => frag.appendChild(trackRow(t, { artistLink: true, queueSwipe: true, onPlay: () => playQueue(songs, i) })));
       const wrap = document.createElement('div'); wrap.className = 'js-songs'; wrap.appendChild(frag);
       const anchorLyr = box.querySelector('.js-lyr');
       box.insertBefore(h, anchorLyr); box.insertBefore(wrap, anchorLyr);

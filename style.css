@@ -952,3 +952,16 @@ html.dark .lyrhead button { color: #f5f5f7; }
 .pcontrols #cPlay { order: 2; }
 .pcontrols #cPrev { order: 3; }
 .pcontrols #cRepeat { order: 4; }
+
+/* Search rows reveal queue actions on a horizontal swipe, as in the reference. */
+.row.swipe-track { position:relative; overflow:hidden; min-height:60px; transition:padding .18s ease; touch-action:pan-y; }
+.row.swipe-track .swipe-actions { display:none; position:absolute; left:2px; right:2px; top:0; bottom:0; align-items:center; gap:4px; pointer-events:none; }
+.row.swipe-track.swipe-open-start { padding-left:63px; }
+.row.swipe-track.swipe-open-end { padding-right:108px; }
+.row.swipe-track.swipe-open-start .swipe-actions, .row.swipe-track.swipe-open-end .swipe-actions { display:flex; }
+.row.swipe-track .swipe-actions button { width:42px; height:42px; border-radius:50%; color:#fff; font-size:23px; line-height:1; pointer-events:auto; flex:none; }
+.row.swipe-track .swipe-next { background:#55565b; margin-right:auto; }
+.row.swipe-track .swipe-end { background:#087fff; margin-left:auto; }
+.row.swipe-track .swipe-remove { background:#ed3150; }
+.row.swipe-track.swipe-open-start .swipe-end, .row.swipe-track.swipe-open-start .swipe-remove { display:none; }
+.row.swipe-track.swipe-open-end .swipe-next { display:none; }
