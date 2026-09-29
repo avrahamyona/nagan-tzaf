@@ -1,4 +1,4 @@
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -289,6 +289,7 @@ let state = {
   favArtists: {},     // chId -> {name, avatar}
   albums: {},         // plId -> {plId,title,thumb,sub}
   history: [],        // recent tracks, newest first (max 60)
+  playedHistory: [],  // completed queue transitions, newest first (max 60)
   station: null,      // {seed, name} when radio autoplay is on
   resume: null,       // {pos, playing, vid} last known playback point
 };
@@ -306,7 +307,7 @@ function save() {
       playlists: state.playlists, queue: state.queue, qi: state.qi,
       shuffle: state.shuffle, repeat: state.repeat, autoNext: state.autoNext, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums, lessSuggestions: state.lessSuggestions,
-      history: state.history.slice(0, 60), station: state.station, resume: state.resume,
+      history: state.history.slice(0, 60), playedHistory: state.playedHistory.slice(0, 60), station: state.station, resume: state.resume,
     }));
   } catch {}
 }
@@ -315,6 +316,12 @@ function pushHistory(t) {
   state.history = state.history.filter(x => x.id !== t.id);
   state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch, album: t.album || null });
   if (state.history.length > 60) state.history.length = 60;
+}
+function recordPlayed(t) {
+  if (!t?.id) return;
+  state.playedHistory ||= [];
+  state.playedHistory.unshift({id:t.id,title:t.title,artist:t.artist,dur:t.dur,ch:t.ch,album:t.album||null});
+  state.playedHistory.length = Math.min(state.playedHistory.length,60);
 }
 const favList = () => state.playlists['שירים אהובים'] || (state.playlists['שירים אהובים'] = []);
 
@@ -684,6 +691,7 @@ function renderLyricSnippet(el, line, q) {
 const current = () => state.queue[state.qi] || null;
 
 function playQueue(tracks, idx, opts = {}) {
+  recordPlayed(current());
   state.queue = tracks.slice(); state.qi = idx || 0;
   state.station = opts.station || null;
   const t = current();
@@ -821,6 +829,7 @@ async function advance(dir, auto) {
     }
     if (n < 0) n = state.queue.length - 1;
   }
+  if (n !== state.qi) recordPlayed(current());
   state.qi = n;
   const t = current();
   if (t) pushHistory(t);
@@ -1362,6 +1371,7 @@ function queueRowOptions(row, t) {
     closeSheet('queueSheet'); setTimeout(() => openSongSheet(t), 250);
   });
 }
+let queueHistoryVisible = false;
 function renderQueue() {
   const box = $('queueList'), cur = current(); box.replaceChildren();
   $('queueTitle').textContent = cur?.title || '';
@@ -1374,12 +1384,21 @@ function renderQueue() {
   for (const [id, on] of [['queueShuffle', state.shuffle], ['queueRepeat', state.repeat !== 'off'], ['queueAuto', state.autoNext], ['queueMix', false]])
     $(id).classList.toggle('on', !!on);
   setIcon($('queueRepeat'), state.repeat === 'one' ? 'repeat1' : 'repeat');
+  if (queueHistoryVisible) {
+    box.appendChild(qHead('ניגן קודם'));
+    const played = state.playedHistory || [];
+    if (!played.length) { const empty=document.createElement('div'); empty.className='qhist-empty'; empty.textContent='השירים שתשמע מכאן והלאה יופיעו כאן'; box.appendChild(empty); }
+    played.forEach(t => {
+      const row=trackRow(t,{onPlay:()=>{playQueue([t],0);renderQueue();}});
+      row.classList.add('qhist'); queueRowOptions(row,t); box.appendChild(row);
+    });
+  }
   box.appendChild(qHead('תור'));
   const ahead = state.queue.slice(state.qi + 1);
   ahead.forEach((t, i) => {
     const row = trackRow(t, { onPlay: () => {
       if (row.classList.contains('swiped')) { row.classList.remove('swiped'); return; }
-      state.qi += 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); renderQueue(); ensureUpNext();
+      recordPlayed(current()); state.qi += 1 + i; pushHistory(t); loadTrack(t); paintNow(); save(); renderQueue(); ensureUpNext();
     } });
     row.classList.add('qnext'); queueRowOptions(row, t);
     const remove = document.createElement('button'); remove.className = 'qremove'; remove.setAttribute('aria-label', 'הסר מהתור'); remove.textContent = '✕';
@@ -1406,7 +1425,20 @@ function syncQueueTransport(knownPaused) {
   $('queueElapsed').textContent = $('tCur').textContent;
   $('queueRemaining').textContent = $('tRem').textContent;
 }
-$('cQueue').addEventListener('click', () => { renderQueue(); openSheet('queueSheet'); });
+$('cQueue').addEventListener('click', () => { queueHistoryVisible=false; renderQueue(); openSheet('queueSheet'); });
+(function queuePullHistory(){
+  const list=$('queueList'); let start=null;
+  list.addEventListener('touchstart', e=>{
+    if(e.touches.length!==1 || e.target.closest('button, input, .qhandle')) return;
+    start=list.scrollTop <= 2 ? {x:e.touches[0].clientX,y:e.touches[0].clientY}:null;
+  },{passive:true});
+  list.addEventListener('touchend', e=>{
+    if(!start) return;
+    const dx=e.changedTouches[0].clientX-start.x, dy=e.changedTouches[0].clientY-start.y; start=null;
+    if(dy > 65 && dy > Math.abs(dx)*1.4 && !queueHistoryVisible) { queueHistoryVisible=true; renderQueue(); list.scrollTop=0; }
+  },{passive:true});
+  list.addEventListener('touchcancel',()=>{start=null},{passive:true});
+})();
 $('queueClose').addEventListener('click', () => closeSheet('queueSheet'));
 // The top grab/header dismisses the queue; the song list keeps its own vertical scroll.
 (function queueTopDismiss() {
@@ -1483,22 +1515,54 @@ $('queueMix').addEventListener('click', () => {
   toast('מעבר חלק עדיין לא זמין');
 });
 function attachQueueDrag(handle, row, sourceIndex) {
+  let pointer = null, startY = 0, startScroll = 0, moving = false;
+  let autoScroll = null;
+  const list = $('queueList');
+  const move = e => {
+    if (e.pointerId !== pointer) return;
+    const dy = e.clientY - startY;
+    if (!moving && Math.abs(dy) < 7) return;
+    if (!moving) {
+      moving = true;
+      row.classList.add('qdragging');
+      row.style.zIndex = '4';
+      row.style.position = 'relative';
+      row.style.willChange = 'transform';
+    }
+    row.style.transform = `translateY(${dy + list.scrollTop - startScroll}px) scale(1.035)`;
+    const bounds = list.getBoundingClientRect();
+    clearInterval(autoScroll); autoScroll = null;
+    const speed = e.clientY < bounds.top + 42 ? -9 : e.clientY > bounds.bottom - 42 ? 9 : 0;
+    if (speed) autoScroll = setInterval(() => { list.scrollTop += speed; row.style.transform = `translateY(${dy + list.scrollTop - startScroll}px) scale(1.035)`; }, 16);
+  };
+  const end = e => {
+    if (e.pointerId !== pointer) return;
+    clearInterval(autoScroll); autoScroll = null;
+    const wasMoving = moving; moving = false;
+    const activePointer = pointer; pointer = null;
+    if (handle.hasPointerCapture?.(activePointer)) handle.releasePointerCapture(activePointer);
+    const rows = [...list.querySelectorAll('.qnext:not(.qdragging)')].filter(r => r !== row);
+    // Pointer capture can retarget the release event; the dragged row's center is the drop location.
+    const dropY = row.getBoundingClientRect().top + row.offsetHeight / 2;
+    const target = rows.findIndex(r => dropY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+    let dest = state.qi + 1 + (target < 0 ? rows.length : target);
+    row.style.transform = ''; row.style.zIndex = ''; row.style.position = ''; row.style.willChange = '';
+    row.classList.remove('qdragging');
+    if (!wasMoving || e.type !== 'pointerup') return;
+    const [item] = state.queue.splice(sourceIndex, 1);
+    // dest is calculated from the other rows after excluding the lifted row.
+    state.queue.splice(Math.min(dest, state.queue.length), 0, item); save(); renderQueue();
+  };
   handle.addEventListener('pointerdown', e => {
-    e.preventDefault(); e.stopPropagation(); handle.setPointerCapture(e.pointerId);
-    const y = e.clientY; row.classList.add('qdragging');
-    const end = ev => {
-      handle.removeEventListener('pointerup', end);
-      if (Math.abs(ev.clientY - y) < 18) { row.classList.remove('qdragging'); return; }
-      const rows = [...$('queueList').querySelectorAll('.qnext:not(.qdragging)')];
-      const target = rows.findIndex(r => ev.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
-      let dest = state.qi + 1 + (target < 0 ? rows.length : target);
-      row.classList.remove('qdragging');
-      const [item] = state.queue.splice(sourceIndex, 1);
-      if (dest > sourceIndex) dest--;
-      state.queue.splice(Math.min(dest, state.queue.length), 0, item); save(); renderQueue();
-    };
-    handle.addEventListener('pointerup', end);
+    if (pointer !== null) return;
+    e.preventDefault(); e.stopPropagation(); pointer = e.pointerId;
+    startY = e.clientY; startScroll = list.scrollTop;
+    handle.setPointerCapture(e.pointerId);
   });
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
 }
 /* share: deep link into OUR app (?song=<id>) - the future app share mechanism */
 $('cOpenYT').addEventListener('click', async () => {
