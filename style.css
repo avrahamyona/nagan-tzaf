@@ -662,7 +662,7 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
   .svtoggle { margin: 2px auto 0; background: rgba(255,255,255,.16); }
   .svtoggle .sv { color: rgba(255,255,255,.84); }
   .svtoggle .sv.on { background: rgba(255,255,255,.94); color: #222; }
-  #artWrap { flex: 0 1 auto; min-height: 0; padding: 10px 0 22px; align-items: flex-start; }
+  #artWrap { flex: 1 1 auto; min-height: 0; padding: 22px 0 32px; align-items: flex-start; }
   #pArt { width: min(100%, 43dvh); height: auto; max-width: min(100%, 43dvh); max-height: 43dvh; aspect-ratio: 1; object-fit: cover; border: 0; border-radius: 7px; box-shadow: 0 20px 36px rgba(0,0,0,.16); }
   .ptitlerow { margin-top: 0; }
   .ptitle { color: #fff; font-size: 19px; }
