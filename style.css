@@ -720,6 +720,12 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
   .artist-albums-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 
+/* Align the desktop search scope to the search field, without changing phones. */
+@media (min-width: 820px) {
+  #view-search > .searchbox,
+  #view-search > .searchscope { width: 100%; margin-inline: auto; }
+}
+
 /* Search scope follows the reference's compact two-way control. */
 .searchscope { display: flex; gap: 2px; background: var(--card); border-radius: 9px; padding: 3px; margin: 12px 4px 4px; }
 .searchscope button { flex: 1; min-height: 29px; font-size: 13px; border-radius: 7px; color: var(--dim); }
