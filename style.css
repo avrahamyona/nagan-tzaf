@@ -297,12 +297,6 @@ svg use { pointer-events: none; }
 }
 .pgrab { align-self: center; color: rgba(255,255,255,.85); padding: 6px 22px; }
 .pgrab svg { width: 26px; height: 26px; }
-.svtoggle {
-  align-self: center; display: flex; background: rgba(255,255,255,.14); border-radius: 9px;
-  padding: 2px; margin-bottom: 8px;
-}
-.svtoggle .sv { font-size: 13px; font-weight: 600; padding: 5px 16px; border-radius: 7px; color: rgba(255,255,255,.85); }
-.svtoggle .sv.on { background: rgba(255,255,255,.92); color: #000; }
 #artWrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px 0 14px; }
 #pArt {
   max-width: 100%; max-height: 100%; aspect-ratio: 1; width: auto; height: auto; object-fit: cover;
@@ -1059,3 +1053,13 @@ body:has(#songSheet.open) #scrim { background:rgba(0,0,0,.24); }
 
 body:has(#songSheet.open) #scrim { z-index:31; }
 #songSheet .sheetrow.hidden { display:none; }
+
+/* v81 long-press motion: source row lifts into card; actions unfold just behind. */
+#songSheet.row-preview-motion { transform:translateY(34px) scale(.94); transform-origin:bottom left; opacity:0; transition:transform .36s cubic-bezier(.2,.85,.2,1),opacity .29s ease; }
+#songSheet.row-preview-motion.open { transform:none; opacity:1; }
+#songSheet.row-preview-motion .song-preview { transform:translate(var(--preview-x,0px),var(--preview-y,0px)) scale(var(--preview-scale,.6)); transform-origin:center; opacity:.75; transition:transform .39s cubic-bezier(.2,.85,.2,1),opacity .3s ease; will-change:transform; }
+#songSheet.row-preview-motion.open .song-preview { transform:none; opacity:1; }
+#songSheet.row-preview-motion .song-menu-shortcuts,#songSheet.row-preview-motion .sheetlist { opacity:0; transform:translateY(19px) scale(.97); transition:transform .32s cubic-bezier(.2,.85,.2,1) .08s,opacity .25s ease .08s; }
+#songSheet.row-preview-motion.open .song-menu-shortcuts,#songSheet.row-preview-motion.open .sheetlist { opacity:1; transform:none; }
+#songSheet.row-preview-motion.is-closing .song-menu-shortcuts,#songSheet.row-preview-motion.is-closing .sheetlist { transition-delay:0s; }
+@media(prefers-reduced-motion:reduce) { #songSheet.row-preview-motion,#songSheet.row-preview-motion .song-preview,#songSheet.row-preview-motion .song-menu-shortcuts,#songSheet.row-preview-motion .sheetlist { transition:none; transform:none; opacity:1; } }
