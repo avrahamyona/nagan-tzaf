@@ -965,3 +965,51 @@ html.dark .lyrhead button { color: #f5f5f7; }
 .row.swipe-track .swipe-remove { background:#ed3150; }
 .row.swipe-track.swipe-open-start .swipe-end, .row.swipe-track.swipe-open-start .swipe-remove { display:none; }
 .row.swipe-track.swipe-open-end .swipe-next { display:none; }
+
+/* v77: align Up Next with the supplied iPhone queue screen while keeping the controls live. */
+#queueSheet { padding-inline: 31px; }
+#queueSheet .queuegrab { margin: 6px 0 24px; }
+#queueSheet .queuehero { min-height: 72px; gap: 12px; }
+#queueSheet .queuehero img { width: 70px; height: 70px; border-radius: 8px; }
+#queueSheet .queuehero-meta { align-items: flex-start; }
+#queueSheet .queuehero-meta strong { font-size: 17px; font-weight: 700; }
+#queueSheet .queuehero-meta span { font-size: 15px; }
+#queueSheet .queuehero .ibtn { padding: 4px; }
+#queueSheet .queuehero .ibtn svg { width: 23px; height: 23px; }
+#queueSheet .queuemodes { margin: 19px 0 12px; gap: 11px; }
+#queueSheet .queuemodes button { height: 38px; background: rgba(255,255,255,.12); }
+#queueSheet .queuemodes button.on { background: rgba(255,215,189,.7); color: #684632; }
+#queueSheet .queuemodes button:disabled { opacity: .8; }
+#queueList .qsect { font-size: 16px; margin: 12px 0 9px; }
+#queueList .row { min-height: 57px; gap: 10px; }
+#queueList .row img { width: 47px; height: 47px; }
+#queueList .row .t { font-size: 16px; font-weight: 500; }
+#queueList .row .a { font-size: 14px; }
+#queueList .row .dots { display: none; }
+#queueList .qhandle { font-size: 0; width: 28px; height: 36px; position: relative; padding: 0; flex: 0 0 28px; }
+#queueList .qhandle::after { content: ''; position: absolute; width: 19px; height: 13px; top: 12px; left: 3px; opacity: .42; background: repeating-linear-gradient(to bottom,currentColor 0 1.5px,transparent 1.5px 5.5px); }
+#queueList .qadd { font-size: 17px; padding: 9px 0; gap: 11px; }
+#queueList .qadd-icon { width: 47px; height: 47px; border-radius: 7px; }
+#queueList .qautonote { margin: 22px 0 8px; font-size: 13px; }
+#queueSheet .queue-transport { padding: 18px 10px 14px; }
+#queueSheet .queue-transport svg { width: 34px; height: 34px; }
+#queueSheet .queue-transport #queueNext svg,
+#queueSheet .queue-transport #queuePrev svg { transform: none; }
+#queueSheet .queue-bottom { padding: 13px 7px 0; }
+@media(max-width:350px) { #queueSheet { padding-inline: 18px; } }
+
+/* v77: only the queue's transport remains below the expanded song list. */
+#queueSheet .queue-close-control { align-self: flex-end; width: 42px; height: 42px; margin: 0 7px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.55); color: #4b3427; flex: none; }
+#queueSheet .queue-close-control svg { width: 24px; height: 24px; }
+#queueSheet .queuegrab, #queueSheet .queuehero { touch-action: pan-x; }
+/* Match the full player's v75 transport press feedback on Up Next. */
+#queueSheet .queue-transport button { border-radius: 50%; transition: background-color .12s ease; }
+#queueSheet .queue-transport button:active,
+#queueSheet .queue-transport button.is-pressing { background: rgba(255,255,255,.12); }
+#queueSheet .queue-transport button svg { transition: transform .14s ease, opacity .14s ease; }
+#queueSheet .queue-transport button:active svg,
+#queueSheet .queue-transport button.is-pressing svg { transform: scale(.87); opacity: .72; }
+@media (prefers-reduced-motion: reduce) {
+  #queueSheet .queue-transport button,
+  #queueSheet .queue-transport button svg { transition: none; }
+}

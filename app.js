@@ -1,4 +1,4 @@
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -1397,7 +1397,6 @@ function renderQueue() {
   add.addEventListener('click', () => { closeSheet('queueSheet'); switchTab('search'); $('searchInput').focus(); }); box.appendChild(add);
   const label = document.createElement('div'); label.className = 'qautonote';
   label.textContent = state.autoNext ? '∞ הפעלה אינסופית · שמירת עד 10 שירים בהמשך התור' : '∞ הפעלה אינסופית כבויה'; box.appendChild(label);
-  $('queueVol').value = state.volume;
   syncQueueTransport();
 }
 function syncQueueTransport(knownPaused) {
@@ -1409,6 +1408,25 @@ function syncQueueTransport(knownPaused) {
 }
 $('cQueue').addEventListener('click', () => { renderQueue(); openSheet('queueSheet'); });
 $('queueClose').addEventListener('click', () => closeSheet('queueSheet'));
+// The top grab/header dismisses the queue; the song list keeps its own vertical scroll.
+(function queueTopDismiss() {
+  const sheet = $('queueSheet');
+  let start = null;
+  sheet.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || e.target.closest('button, input, #queueList')) return;
+    const y = e.touches[0].clientY;
+    const headerBottom = $('queueHero').getBoundingClientRect().bottom;
+    start = y <= headerBottom ? { x:e.touches[0].clientX, y } : null;
+  }, { passive:true });
+  sheet.addEventListener('touchend', e => {
+    if (!start || !sheet.classList.contains('open')) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (dy > 65 && dy > Math.abs(dx) * 1.4) closeSheet('queueSheet');
+    start = null;
+  }, { passive:true });
+  sheet.addEventListener('touchcancel', () => { start = null; }, { passive:true });
+})();
 $('queueMore').addEventListener('click', () => { const t=current(); if (t) { closeSheet('queueSheet'); setTimeout(() => openSongSheet(t), 250); } });
 $('queueFav').addEventListener('click', () => { if (current()) { toggleFav(current()); renderQueue(); } });
 function holdSkip(btn, direction) {
@@ -1455,8 +1473,6 @@ for (const [id, direction] of [['queuePrev', -1], ['queueNext', 1], ['cPrev', -1
 $('queuePlay').addEventListener('click', () => { togglePlay(); setTimeout(syncQueueTransport, 150); });
 $('queueSeek').addEventListener('input', e => { e.target.style.setProperty('--queue-progress', (+e.target.value / 10) + '%'); $('seek').value = e.target.value; $('seek').dispatchEvent(new Event('input', { bubbles:true })); });
 $('queueSeek').addEventListener('change', e => { $('seek').value = e.target.value; $('seek').dispatchEvent(new Event('change', { bubbles:true })); });
-$('queueLyrics').addEventListener('click', () => { closeSheet('queueSheet'); openLyrics(); });
-$('queueVol').addEventListener('input', e => { $('vol').value = e.target.value; $('vol').dispatchEvent(new Event('input', { bubbles: true })); });
 $('queueShuffle').addEventListener('click', () => { $('cShuffle').click(); renderQueue(); });
 $('queueRepeat').addEventListener('click', () => { $('cRepeat').click(); renderQueue(); });
 $('queueAuto').addEventListener('click', () => {

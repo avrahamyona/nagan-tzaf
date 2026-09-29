@@ -272,12 +272,11 @@
   <div class="queue-footer" id="queueFooter">
     <div class="queue-timeline"><input id="queueSeek" type="range" min="0" max="1000" value="0" aria-label="מיקום בשיר"><div class="queue-times"><span id="queueElapsed">0:00</span><span id="queueRemaining">-0:00</span></div></div>
     <div class="queue-transport">
-      <button id="queuePrev" aria-label="השיר הקודם"><svg><use href="#i-prev"/></svg></button>
+      <button id="queuePrev" aria-label="השיר הקודם"><svg><use href="#i-skip-back"/></svg></button>
       <button id="queuePlay" aria-label="נגן או השהה"><svg><use href="#i-play"/></svg></button>
-      <button id="queueNext" aria-label="השיר הבא"><svg><use href="#i-next"/></svg></button>
+      <button id="queueNext" aria-label="השיר הבא"><svg><use href="#i-skip-forward"/></svg></button>
     </div>
-    <div class="queue-volume"><svg><use href="#i-vol-high"/></svg><input id="queueVol" type="range" min="0" max="100" aria-label="עוצמת שמע" dir="rtl"><svg><use href="#i-vol-low"/></svg></div>
-    <div class="queue-bottom"><button id="queueLyrics" aria-label="מילים"><svg><use href="#i-lyrics"/></svg></button><button id="queueClose" aria-label="סגור תור"><svg><use href="#i-queue"/></svg></button></div>
+    <button id="queueClose" class="queue-close-control" aria-label="סגור תור וחזור לנגן"><svg><use href="#i-queue"/></svg></button>
   </div>
 </div>
 
