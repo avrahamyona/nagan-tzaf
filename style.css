@@ -444,8 +444,7 @@ body:has(#destinationSheet.open) #scrim { background: rgba(0,0,0,.12); }
 #i-next, #i-prev { }
 .tabbtn svg, .mbtn svg, .cbtn svg { }
 
-#cNext svg, #mNext svg { transform: scaleX(-1); }
-#cPrev svg { transform: scaleX(-1); }
+#mNext svg { transform: scaleX(-1); }
 .row .chev, .sechead .more svg, .artisthit svg.chev, .librow .chev { transform: none; }
 .pageback svg { transform: scaleX(-1); }
 .abanner { filter: saturate(1.1); }
@@ -936,3 +935,20 @@ html.dark .lyrhead button { color: #f5f5f7; }
 #queueSheet #queueVol::-moz-range-thumb { width:0; height:0; border:0; }
 #queueSheet .queuemodes button { height:40px; }
 #queueSheet .queuemodes button.on { background:rgba(255,255,255,.52); }
+
+/* Apple Music transport: double-chevron shapes, not next-track bars. */
+.pcontrols .skipbtn { width: 58px; height: 64px; border-radius: 50%; transition: background-color .12s ease; }
+.pcontrols .skipbtn svg { width: 34px; height: 34px; overflow: visible; }
+.pcontrols .skipbtn:active, .pcontrols .skipbtn.is-pressing { background: rgba(255,255,255,.12); }
+.pcontrols .skipbtn .skip-shape-a, .pcontrols .skipbtn .skip-shape-b { transition: transform .14s ease, opacity .14s ease; }
+.pcontrols .skipbtn.is-pressing svg { transform: scale(.87); transition: transform .12s ease; }
+.pcontrols #cPlay svg { transition: transform .14s ease, opacity .14s ease; }
+.pcontrols #cPlay:active svg { transform: scale(.86); opacity: .72; }
+@media (prefers-reduced-motion: reduce) {
+  .pcontrols .skipbtn, .pcontrols .skipbtn svg, .pcontrols #cPlay svg { transition: none; }
+}
+/* In the reference, previous is on the left and next is on the right. */
+.pcontrols #cNext { order: 1; }
+.pcontrols #cPlay { order: 2; }
+.pcontrols #cPrev { order: 3; }
+.pcontrols #cRepeat { order: 4; }
