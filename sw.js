@@ -1,4 +1,4 @@
-const V = 'nagan-v85-desktop-search-alignment';
+const V = 'nagan-v86-mobile-artwork-balance';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

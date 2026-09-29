@@ -1,4 +1,4 @@
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
