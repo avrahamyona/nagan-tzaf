@@ -1,4 +1,4 @@
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 'use strict';
 /* ============ מוזיקה — Apple Music clone (v11) ============
    Static PWA. Playback: official YouTube IFrame embed (hidden) + ad-free direct
@@ -981,6 +981,7 @@ function setIcon(btn, name) { const u = btn && btn.querySelector('use'); if (u) 
 function syncPlayUI(paused) {
   setIcon($('mPlay'), paused ? 'play' : 'pause');
   setIcon($('cPlay'), paused ? 'play' : 'pause');
+  $('player').classList.toggle('art-paused', paused);
   try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = paused ? 'paused' : 'playing'; } catch {}
   if ($('queueSheet').classList.contains('open')) syncQueueTransport(paused);
   paintPlayingRows();
