@@ -981,6 +981,7 @@ function setIcon(btn, name) { const u = btn && btn.querySelector('use'); if (u) 
 function syncPlayUI(paused) {
   setIcon($('mPlay'), paused ? 'play' : 'pause');
   setIcon($('cPlay'), paused ? 'play' : 'pause');
+  $('player').classList.toggle('art-paused', paused);
   try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = paused ? 'paused' : 'playing'; } catch {}
   if ($('queueSheet').classList.contains('open')) syncQueueTransport(paused);
   paintPlayingRows();
