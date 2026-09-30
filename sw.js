@@ -1,5 +1,5 @@
-const V = 'nagan-v141-lyric-discovery';
-const SHELL = ['./phone-genre-mixes.js', './list-integrity.js', './background-queue.js', './backward-control.js', './', './index.html', './style.css', './app.js', './discovery-1.js', './discovery-2.js', './discovery-3.js', './discovery-4.js', './artist-recommendations.js', './lyrics-modes.js', './lyric-results.js', './arabic-categories.js', './home-vibes.js', './personalized-mixes.js', './search-order.js', './lyrics-controls.js', './friends-playlist.js', './personal-albums.js', './music-domains.js', './song-albums.js', './thumbnail-fill.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
+const V = 'nagan-v142-lyric-discovery';
+const SHELL = ['./arabic-catalog-paging.js', './phone-genre-mixes.js', './list-integrity.js', './background-queue.js', './backward-control.js', './', './index.html', './style.css', './app.js', './discovery-1.js', './discovery-2.js', './discovery-3.js', './discovery-4.js', './artist-recommendations.js', './lyrics-modes.js', './lyric-results.js', './arabic-categories.js', './home-vibes.js', './personalized-mixes.js', './search-order.js', './lyrics-controls.js', './friends-playlist.js', './personal-albums.js', './music-domains.js', './song-albums.js', './thumbnail-fill.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
