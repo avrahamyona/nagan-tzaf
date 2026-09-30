@@ -2,3 +2,4 @@
 #songSheet.apple-song-menu #ssAdd{display:flex}#songSheet.apple-song-menu #ssAlbum.hidden{display:flex;opacity:.45;pointer-events:none}#songSheet.apple-song-menu .sheetrow{min-height:37px;font-size:13px}#songSheet.apple-song-menu .sheetlist{max-height:calc(100dvh - 260px)}
 
 #songSheet.apple-song-menu #ssAlbum:disabled{opacity:.45;pointer-events:none}
+.row.swipe-track .swipe-actions button{width:auto;min-width:100px;height:38px;padding:0 10px;border-radius:14px;font-size:14px}.row.swipe-track .swipe-actions .swipe-remove{min-width:38px;width:38px;padding:0}.row.swipe-track.swipe-open-start{padding-left:116px}.row.swipe-track.swipe-open-end{padding-right:164px}
