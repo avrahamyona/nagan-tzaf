@@ -24,7 +24,8 @@ async function arabicRepertoire(kind){
  {q:'Farid Al Atrash Ya Albi Ya Magrouh',match:t=>t.musicCatalog&&t.ch==='UCLlXnM1R9aMay2f-fg85EPw'&&/Ya Alb[y|i] Ya Magrouh/.test(t.title)},
  {q:'Abdel Halim Hafez El Toba',match:t=>t.musicCatalog&&t.ch==='UC2AunJnbADpAliYHtSOrnfw'&&/^El Toba/.test(t.title)}
  ];
- const results=await Promise.allSettled(specs.map(async spec=>(await within(searchMusicCached(spec.q),17000)).filter(spec.match).slice(0,kind===0?2:3)));
+ const progressive=[];
+ const results=await Promise.allSettled(specs.map(async spec=>{const tracks=(await within(searchMusicCached(spec.q),17000)).filter(spec.match).slice(0,kind===0?2:3);progressive.push(...tracks);window.genreProgressHooks?.get(arabicCategoryNames[kind])?.(progressive.slice());return tracks;}));
  const seen=new Set;return results.flatMap(r=>r.status==='fulfilled'?r.value:[]).filter(t=>{if(seen.has(t.id))return false;seen.add(t.id);return true;});
 }
 runSearch=async function(q,pill){
