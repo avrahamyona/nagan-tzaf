@@ -13,7 +13,7 @@ function addFriendsPlaylist(){
  const{sec,body}=sectionEl('שירים עם חברים','hscroll heroes');sec.id='friendsPlaylistShelf';sec.classList.add('home-featured');
  friendsPlaylists.forEach((spec,i)=>{
   let ready=null,busy=false;const card=heroCard({title:spec.name,kicker:'לשיר ביחד',desc:spec.desc,grad:GRADS[i%GRADS.length],img:'',tap:async()=>{
-   if(busy)return;busy=true;toast('פותח '+spec.name+'...');try{const tracks=ready||await buildHomeVibe(spec);if(tracks.length){sectionTracks(spec.name,tracks);$('plOwner').textContent='Avi Music · מבחר לשיר ביחד';}else toast('המבחר לא זמין כרגע');}finally{busy=false;}
+   if(busy)return;busy=true;try{await openMusicDomain(spec);}finally{busy=false;}
   }});body.appendChild(card);
   // Load a cover song only, not every playlist, until the owner opens it.
   buildHomeVibe({songs:spec.songs.slice(0,1)}).then(tracks=>{if(!tracks.length||!card.isConnected)return;const image=document.createElement('img');image.src=sqThumb(tracks[0].id);image.alt='';card.prepend(image);}).catch(()=>{});
