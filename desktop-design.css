@@ -25,3 +25,11 @@
 @media(min-width:820px){
  #mini{left:50%!important;right:auto!important;width:min(520px,calc(100vw - 64px))!important;bottom:18px!important;transform:translateX(-50%)!important;margin:0!important;max-width:none!important;}
 }
+
+@media(min-width:820px){
+ .asec-arrow{display:inline-flex;align-items:center;justify-content:center;direction:ltr;}
+ #player{transition:none;}
+ #desktopPlayerBackdrop:not(.hidden){animation:desktopBackdropIn .28s ease-out;}
+ @keyframes desktopBackdropIn{from{opacity:0}to{opacity:1}}
+}
+@media(prefers-reduced-motion:reduce){#desktopPlayerBackdrop{animation:none!important;}}
