@@ -21,7 +21,8 @@ openSongSheet=function(track,options={}){
  openBeforeGestures(track,options);
  setIcon($('ssFav'),state.fav[track.id]?'star':'star');$('ssFav').querySelector('span').textContent=state.fav[track.id]?'הסרה מהמועדפים':'הוספה למועדפים';
  $('songShortcutFav').querySelector('span').textContent=state.fav[track.id]?'הסרה מהמועדפים':'הוספה למועדפים';
- $('ssAlbum').disabled=$('ssAlbum').classList.contains('hidden');$('ssAlbum').classList.remove('hidden');
+ $('ssAlbum').disabled=!track.album?.plId;$('ssAlbum').classList.remove('hidden');
+ if(!track.album?.plId)verifiedAlbumFor(track).then(album=>{if(sheetTrack?.id===track.id&&album?.plId){$('ssAlbum').disabled=false;sheetOpts.verifiedAlbum=album;}});
  const sheet=$('songSheet');sheet.classList.add('apple-song-menu');
  // Keep the entire action panel inside the viewport, with a lifted source preview.
  sheet.style.bottom='auto';sheet.style.top='';sheet.style.left='';
