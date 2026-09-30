@@ -1,5 +1,5 @@
 const V = 'nagan-v115-song-discovery';
-const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
+const SHELL = ['./', './index.html', './style.css', './app.js', './discovery-1.js', './discovery-2.js', './discovery-3.js', './discovery-4.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
