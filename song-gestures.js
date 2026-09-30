@@ -25,7 +25,8 @@ openSongSheet=function(track,options={}){
  if(!track.album?.plId)verifiedAlbumFor(track).then(album=>{if(sheetTrack?.id===track.id&&album?.plId){$('ssAlbum').disabled=false;sheetOpts.verifiedAlbum=album;}});
  const sheet=$('songSheet');sheet.classList.add('apple-song-menu');
  // Keep the entire action panel inside the viewport, with a lifted source preview.
- sheet.style.bottom='auto';sheet.style.top='';sheet.style.left='';
+ // v152: anchored opens (three-dots button) keep the position openSongSheet computed; only reset for legacy unanchored opens.
+ if(!options.anchor && !options.anchorRect){sheet.style.bottom='auto';sheet.style.top='';sheet.style.left='';}
  if(options.sourceRow){const r=options.sourceRow.getBoundingClientRect(),height=Math.min(sheet.scrollHeight,innerHeight-130);sheet.style.left=Math.max(16,Math.min(innerWidth-sheet.offsetWidth-16,r.left+12))+'px';sheet.style.top=Math.max(options.preview?108:24,Math.min(innerHeight-height-90,r.top+20))+'px';}
 };
 // Long hold also works with mouse. Original touch hold is shared by all trackRow calls.
