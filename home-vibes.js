@@ -3,6 +3,14 @@ const homeVibes=[
  {name:'מזרחי דיכאון',desc:'שירי נשמה ומזרחית כבדה',songs:[['אבי ביטר','חבר ואח'],['זהבה בן','טיפת מזל'],['שריף','ממשיכה לבד']]},
  {name:'מזרחי שמח',desc:'קצב לריקודים ולשמחה',songs:[['משה פרץ','קרמלה'],['פאר טסי','מה נשאר לך']]},
  {name:'מזרחי טורקי',desc:'ערבסק והשפעה טורקית',songs:[['זהבה בן','טיפת מזל'],['עופר לוי','יום הרווקים']]},
+ {name:'פופ שמח',desc:'קצב ישראלי וצבע',songs:[['סטטיק ובן אל','סלסולים'],['נועה קירל','פאוץ'],['עומר אדם','שני משוגעים']]},
+ {name:'אהבה',desc:'שירים לשניים',songs:[['אייל גולן','צליל מיתר'],['עידן רייכל','ממעמקים']]},
+ {name:'שקט של ערב',desc:'שירים לנשום איתם',songs:[['שלמה ארצי','ירח'],['אריק איינשטיין','סע לאט']]},
+ {name:'געגוע',desc:'זיכרונות ושירים מהלב',songs:[['אריק איינשטיין','עוף גוזל'],['שלמה ארצי','האהבה הישנה']]},
+ {name:'מסיבה',desc:'לעלות את הקצב',songs:[['סטטיק ובן אל','סלסולים'],['משה פרץ','קרמלה'],['פאר טסי','דרך השלום']]},
+ {name:'נסיעה',desc:'שירים לדרך',songs:[['אריק איינשטיין','סע לאט'],['פאר טסי','דרך השלום']]},
+ {name:'שבת',desc:'שירים של נשמה ומנוחה',songs:[['ישי ריבו','סיבת הסיבות'],['יובל טייב','מחרוזת הבדלה']]},
+ {name:'נוסטלגיה מזרחית',desc:'קלאסיקות של נשמה',songs:[['זוהר ארגוב','הפרח בגני'],['חיים משה','אהבת חיי']]},
  {name:'ארץ ישראל',desc:'קלאסיקות של הזמר העברי',songs:[['אריק איינשטיין','אני ואתה'],['אריק איינשטיין','עטור מצחך']]}
 ];
 const vibeTrackCache=new Map;
@@ -17,12 +25,10 @@ function addHomeVibes(){
  const box=$('listenBody');if(box.querySelector('#homeVibeShelf'))return;
  const {sec,body}=sectionEl('אווירה ומצב רוח','hscroll heroes');sec.id='homeVibeShelf';sec.classList.add('home-featured');
  for(const [i,spec]of homeVibes.entries()){
- const card=heroCard({title:spec.name,kicker:'מבחר שירים',desc:spec.desc,grad:GRADS[i%GRADS.length],img:'',tap:async()=>{
- toast('פותח את '+spec.name+'...');let tracks=vibeTrackCache.get(spec.name);
- if(!tracks){tracks=await buildHomeVibe(spec);if(tracks.length)vibeTrackCache.set(spec.name,tracks);}
- if(tracks?.length){sectionTracks(spec.name,tracks);$('plOwner').textContent='Avi Music · מבחר ראשוני';}else toast('המבחר לא זמין כרגע');
+ const card=heroCard({title:spec.name,kicker:'שירים, אמנים ואלבומים',desc:spec.desc,grad:GRADS[i%GRADS.length],img:'',tap:async()=>{
+ await openMusicDomain(spec);
  }});body.appendChild(card);
- buildHomeVibe(spec).then(tracks=>{if(!card.isConnected||!tracks.length)return;vibeTrackCache.set(spec.name,tracks);if(card){const image=document.createElement('img');image.src=sqThumb(tracks[0].id);image.alt='';card.prepend(image);}}).catch(()=>{});
+ buildHomeVibe({songs:spec.songs.slice(0,1)}).then(tracks=>{if(!card.isConnected||!tracks.length)return;if(card){const image=document.createElement('img');image.src=sqThumb(tracks[0].id);image.alt='';card.prepend(image);}}).catch(()=>{});
  }
  const anchor=[...box.children].find(x=>x.querySelector('h2')?.textContent.includes('הושמעו לאחרונה'));if(anchor)anchor.after(sec);else box.appendChild(sec);
 }
