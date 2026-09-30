@@ -43,9 +43,11 @@ function renderLyricSnippet(el,line,q){
 }
 async function lyricResultTrack(title,artist){
  const key=lyricKey(title),ak=lyricKey(artist);
- const known=[...(state.history||[]),...(state.queue||[])].find(t=>lyricKey(t.title)===key&&lyricKey(t.artist)===ak);
+ const artistAliases=new Set([ak]);if(['אייל גולן','eyal golan'].includes(ak)){artistAliases.add('אייל גולן');artistAliases.add('eyal golan');}
+ const matches=t=>{const tk=lyricKey(lyricQueryTitle(t.title)),ta=lyricKey(lyricQueryTitle(t.artist));return !/(קאבר|cover|remix|רמיקס)/i.test(t.title)&&(tk===key||tk.includes(key))&&[...artistAliases].some(a=>ta===a||ta.includes(a)||a.includes(ta));};
+ const known=[...(state.history||[]),...(state.queue||[])].find(t=>matches(t));
  if(known)return known;
- try{return (await searchMusicCached(artist+' '+title)).find(t=>lyricKey(t.title)===key&&lyricKey(t.artist)===ak)||null;}catch{return null;}
+ try{return (await searchMusicCached(artist+' '+title)).filter(matches).sort((a,b)=>Number(!!b.musicCatalog)-Number(!!a.musicCatalog))[0]||null;}catch{return null;}
 }
 function decorateLyricResults(){
  document.querySelectorAll('#resBody h2.js-lyr').forEach(h=>{if(h.textContent!=='תוצאות מובילות')h.textContent='תוצאות מובילות';});
