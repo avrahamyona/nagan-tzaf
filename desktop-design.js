@@ -13,24 +13,43 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
  }}
  if(card){card.querySelector('img').referrerPolicy='no-referrer';}
 };
-// v156: glyph direction and content direction agree in every shared carousel.
+// v158: physical left/right controls move cards in the same screen direction.
 (function(){
- const sectionBeforeArrowFix=sectionEl;
- sectionEl=function(...args){const result=sectionBeforeArrowFix(...args);fixCarouselArrows(result.sec);return result;};
- function fixCarouselArrows(root){
+ const before=sectionEl;
+ sectionEl=function(...args){const result=before(...args);fix(result.sec);return result;};
+ function fix(root){
   for(const section of root.matches?.('.asec')?[root]:root.querySelectorAll('.asec')){
    const body=section.querySelector('.asec-body.hscroll');if(!body)continue;
-   for(const original of section.querySelectorAll('.asec-arrow')){
+   const originals=[...section.querySelectorAll('.asec-arrow')];
+   originals.forEach((original,i)=>{
     if(original.dataset.directionFixed)return;
-    const button=original.cloneNode(true),right=original.textContent.trim()==='›';
-    button.dataset.directionFixed='1';button.setAttribute('aria-label',(right?'גלול ימינה':'גלול שמאלה')+' - '+section.querySelector('.asec-title')?.textContent.replace('‹','').trim());
+    const button=original.cloneNode(false),right=i===originals.length-1;
+    button.dataset.directionFixed='1';button.dataset.contentDirection=right?'right':'left';
+    button.style.direction='ltr';
+    button.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(right?'M9 5l7 7-7 7':'M15 5l-7 7 7 7')+'" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    button.setAttribute('aria-label',(right?'הזז תוכן משמאל לימין':'הזז תוכן מימין לשמאל')+' - '+section.querySelector('.asec-title')?.textContent.replace('‹','').trim());
     button.addEventListener('click',()=>{
-     // In RTL, increasing scrollLeft moves cards left; decreasing moves right.
-     const rtl=getComputedStyle(body).direction==='rtl';
-     body.scrollBy({left:(right?(rtl?-1:1):(rtl?1:-1))*Math.max(250,body.clientWidth*.8),behavior:'smooth'});
+     // A negative scroll delta moves actual cards right in both RTL and LTR.
+     body.scrollBy({left:(right?-1:1)*Math.max(250,body.clientWidth*.8),behavior:'smooth'});
     });original.replaceWith(button);
-   }
+   });
   }
  }
- fixCarouselArrows(document);
+ fix(document);
+})();
+// Expand the full desktop player from the mini-player's exact rectangle.
+(function(){
+ const player=$('player');let hidden=player.classList.contains('hidden'),animation=null;
+ new MutationObserver(()=>{
+  const next=player.classList.contains('hidden');
+  if(next===hidden)return;hidden=next;animation?.cancel();
+  if(next||!matchMedia('(min-width:820px)').matches||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const mini=$('mini').getBoundingClientRect(),full=player.getBoundingClientRect();
+  if(!mini.width||!mini.height)return;
+  const dx=mini.left+mini.width/2-(full.left+full.width/2),dy=mini.top+mini.height/2-(full.top+full.height/2);
+  animation=player.animate([
+   {transform:`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) scale(${mini.width/full.width},${mini.height/full.height})`,borderRadius:'40px',opacity:.7},
+   {transform:'translate(-50%,-50%) scale(1,1)',borderRadius:'24px',opacity:1}
+  ],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
+ }).observe(player,{attributes:true,attributeFilter:['class']});
 })();
