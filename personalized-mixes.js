@@ -18,10 +18,10 @@ async function buildPersonalMix(){
 }
 function addPersonalMix(){
  const box=$('listenBody');if(box.querySelector('#personalArtistMix')||!tasteArtists().length)return;
- const{sec,body}=sectionEl('מיקס האמנים שלך','hscroll heroes');sec.id='personalArtistMix';sec.classList.add('home-featured');
+ const target=[...box.children].find(sec=>sec.querySelector('.asec-title')?.textContent.replace('›','').replace('‹','').trim()==='בחירות מובילות עבורך');if(!target)return;const body=target.querySelector('.asec-body');if(!body)return;
  const seed=tasteArtists()[0],track=state.history.find(t=>t.ch===seed.ch||artistKey(t.artist)===artistKey(seed.name));
  let busy=false;const card=heroCard({title:'המיקס שלך',kicker:'לפי ההאזנה שלך',desc:seed.name+' ואמנים דומים',grad:GRADS[0],img:track?sqThumb(track.id):'',tap:async()=>{
  if(busy)return;busy=true;toast('בונה את המיקס שלך...');try{const mix=await buildPersonalMix();if(mix.names.length<2||!mix.tracks.length)return toast('אין כרגע מספיק אמנים מתאימים למיקס');sectionTracks('המיקס שלך',mix.tracks);$('plOwner').textContent=mix.names.join(' · ');}catch{toast('המיקס לא זמין כרגע');}finally{busy=false;}
- }});body.appendChild(card);box.prepend(sec);
+ }});card.id='personalArtistMix';body.prepend(card);
 }
 const listenBeforeMix=renderListen;renderListen=async function(){await listenBeforeMix();addPersonalMix();};addPersonalMix();
