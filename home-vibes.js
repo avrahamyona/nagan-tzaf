@@ -31,9 +31,11 @@ const moodExtras={
 for(const spec of homeVibes)spec.songs.push(...(moodExtras[spec.name]||[]));
 const vibeTrackCache=new Map;
 async function buildHomeVibe(spec){
+ const progressive=[];
  const results=await Promise.allSettled(spec.songs.map(async([artist,title])=>{
  const items=await within(searchMusicCached(artist+' '+title),17000);
- return items.filter(t=>normTxt(t.title).includes(normTxt(title))&&normTxt(t.title+' '+t.artist).includes(normTxt(artist))&&t.dur>=120&&t.dur<=600&&!/(רמיקס|remix|קריוקי|karaoke|mash up|קאבר|cover)/i.test(t.title)).sort((a,b)=>Number(/רשמי|official|פונוקול/i.test(b.artist))-Number(/רשמי|official|פונוקול/i.test(a.artist)))[0];
+ const match=items.filter(t=>normTxt(t.title).includes(normTxt(title))&&normTxt(t.title+' '+t.artist).includes(normTxt(artist))&&t.dur>=120&&t.dur<=600&&!/(רמיקס|remix|קריוקי|karaoke|mash up|קאבר|cover)/i.test(t.title)).sort((a,b)=>Number(/רשמי|official|פונוקול/i.test(b.artist))-Number(/רשמי|official|פונוקול/i.test(a.artist)))[0];
+ if(match){progressive.push(match);window.genreProgressHooks?.get(spec.name)?.(progressive.slice());}return match;
  }));
  const tracks=results.flatMap(r=>r.status==='fulfilled'&&r.value?[r.value]:[]);return tracks;
 }
