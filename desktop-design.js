@@ -13,3 +13,24 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
  }}
  if(card){card.querySelector('img').referrerPolicy='no-referrer';}
 };
+// v156: glyph direction and content direction agree in every shared carousel.
+(function(){
+ const sectionBeforeArrowFix=sectionEl;
+ sectionEl=function(...args){const result=sectionBeforeArrowFix(...args);fixCarouselArrows(result.sec);return result;};
+ function fixCarouselArrows(root){
+  for(const section of root.matches?.('.asec')?[root]:root.querySelectorAll('.asec')){
+   const body=section.querySelector('.asec-body.hscroll');if(!body)continue;
+   for(const original of section.querySelectorAll('.asec-arrow')){
+    if(original.dataset.directionFixed)return;
+    const button=original.cloneNode(true),right=original.textContent.trim()==='›';
+    button.dataset.directionFixed='1';button.setAttribute('aria-label',(right?'גלול ימינה':'גלול שמאלה')+' - '+section.querySelector('.asec-title')?.textContent.replace('‹','').trim());
+    button.addEventListener('click',()=>{
+     // In RTL, increasing scrollLeft moves cards left; decreasing moves right.
+     const rtl=getComputedStyle(body).direction==='rtl';
+     body.scrollBy({left:(right?(rtl?-1:1):(rtl?1:-1))*Math.max(250,body.clientWidth*.8),behavior:'smooth'});
+    });original.replaceWith(button);
+   }
+  }
+ }
+ fixCarouselArrows(document);
+})();
