@@ -39,7 +39,7 @@ ensureUpNext=async function(){if(current()?._domainScope)return;return upNextBef
 // At a scoped list's end stop, never fill it with personal recommendations.
 const advanceBeforeIntegrity=advance;
 advance=async function(direction,automatic){
- if(automatic&&direction===1&&current()?._domainScope&&state.qi===state.queue.length-1&&state.repeat!=='all'&&state.repeat!=='one'){syncPlayUI(true);return;}
+ if(!state.priorityCurrent&&!state.priorityQueue?.length&&automatic&&direction===1&&current()?._domainScope&&state.qi===state.queue.length-1&&state.repeat!=='all'&&state.repeat!=='one'){syncPlayUI(true);return;}
  return advanceBeforeIntegrity(direction,automatic);
 };
 
