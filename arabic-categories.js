@@ -13,6 +13,8 @@ async function arabicRepertoire(kind){
  {q:'ציון יחזקאל אל בעוני הבט',match:t=>t.musicCatalog&&t.ch==='UCHJEA-zPIdyjpIiUmwF7rNg'&&t.title==='אל בעוני הבט'},
  {q:'יובל טייב מחרוזת הבדלה',match:t=>t.musicCatalog&&t.ch==='UCJ9MOj5CuA0gaehrxG5usMw'&&t.title==='מחרוזת הבדלה'},
  {q:'משה חבושה אל בעוני הבט תפארת הפיוט',match:t=>t.ch==='UCvQ-FLyMnStA953qDSa8NIA'&&/משה חבושה/.test(t.title)&&/אל בעוני/.test(t.title)},
+ {q:'יחיאל נהרי אל בעניי הבט',match:t=>t.musicCatalog&&t.ch==='UCNGMSfhi-Mh_B_Fc5hQbX-w'&&/אל בעניי הבט/.test(t.title)},
+ {q:'יחיאל נהרי פאר נעטר',match:t=>/יחיאל נהרי/.test(t.title)&&/פאר נעטר/.test(t.title)},
  {q:'עופר לוי פיוטי סליחות',match:t=>t.musicCatalog&&t.artist==='עופר לוי - Ofer Levi'&&t.title==='פיוטי סליחות'}
  ]:[
  {q:'أم كلثوم إنت عمري',match:t=>t.musicCatalog&&t.ch==='UCMi73zodlL6dMA8tyJDOClw'&&t.title==='انت عمري'},
@@ -31,7 +33,7 @@ runSearch=async function(q,pill){
  const seq=++searchSeq,box=$('resBody');box.innerHTML='<div class="empty"><p>טוען שירים...</p></div>';
  const tracks=await arabicRepertoire(kind);if(seq!==searchSeq)return;
  box.replaceChildren();const heading=document.createElement('h2');heading.className='secttl';heading.textContent=q;box.appendChild(heading);
- const note=document.createElement('p');note.className='catalog-note dim';note.textContent=kind===0?'פיוט ומקאמים: משה חבושה, ציון יחזקאל, יובל טייב ועופר לוי · גם ביצועי תפארת הפיוט.':'קלאסיקות בערבית: אום כולתום, מוחמד עבד אל-והאב, פריד אל-אטרש ועבד אל-חלים חאפז.';box.appendChild(note);
+ const note=document.createElement('p');note.className='catalog-note dim';note.textContent=kind===0?'פיוט ומקאמים: משה חבושה, ציון יחזקאל, יובל טייב, יחיאל נהרי ועופר לוי · גם ביצועי תפארת הפיוט.':'קלאסיקות בערבית: אום כולתום, מוחמד עבד אל-והאב, פריד אל-אטרש ועבד אל-חלים חאפז.';box.appendChild(note);
  if(!tracks.length){const empty=document.createElement('p');empty.textContent='המבחר לא זמין כרגע. נסה שוב.';box.appendChild(empty);return;}
  tracks.forEach((t,i)=>box.appendChild(trackRow(t,{artistLink:true,queueSwipe:true,onPlay:()=>playQueue(tracks,i)})));
 };
