@@ -8,6 +8,7 @@ const artistIdentityBeforeArabicPaging=songArtistIdentity;
 songArtistIdentity=function(t){return broadArabicArtists.some(a=>a.ch===t.ch)?t.ch:artistIdentityBeforeArabicPaging(t);};
 const arabicClassicSpec=categoryDomains[arabicCategoryNames[1]];
 function arabicCatalogBrowser(){
+ const progressive=[];
  const cursors=broadArabicArtists.map(a=>({a,next:null,started:false,done:false}));let pool=[],busy=false;
  return async function(existing=[]){
   if(busy)return {tracks:[],done:false};busy=true;let successful=0;
@@ -16,7 +17,8 @@ function arabicCatalogBrowser(){
     const results=await Promise.allSettled(cursors.filter(c=>!c.done).map(async c=>{
      const path=c.started?'/nextpage/search?q='+encodeURIComponent(c.a.query)+'&filter=music_songs&nextpage='+encodeURIComponent(c.next):'/search?q='+encodeURIComponent(c.a.query)+'&filter=music_songs';
      const j=await within(pipedFetch(path),15000);successful++;c.started=true;c.next=j.nextpage;c.done=!c.next||c.next==='null';
-     return (j.items||[]).filter(x=>x.type==='stream').map(x=>({...mapStream(x),musicCatalog:true,_domainScope:arabicClassicSpec.name})).filter(t=>t.id&&t.ch===c.a.ch&&t.dur>=90&&!/karaoke|remix|רמיקס|sped up|slowed|8d|nightcore/i.test(t.title));
+     const ready=(j.items||[]).filter(x=>x.type==='stream').map(x=>({...mapStream(x),musicCatalog:true,_domainScope:arabicClassicSpec.name})).filter(t=>t.id&&t.ch===c.a.ch&&t.dur>=90&&!/karaoke|remix|רמיקס|sped up|slowed|8d|nightcore/i.test(t.title));
+     progressive.push(...ready);window.genreProgressHooks?.get(arabicClassicSpec.name)?.(uniqueSongList(progressive));return ready;
     }));
     let joined=uniqueSongList([...existing,...pool,...results.flatMap(r=>r.status==='fulfilled'?r.value:[])]);
     if(joined.some(t=>/^Cleopatra$/i.test(t.title)))joined=joined.filter(t=>!/^Cleopatra\s*\(Pt\s*\d+\)/i.test(t.title));
