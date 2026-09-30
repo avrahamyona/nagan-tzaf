@@ -261,38 +261,132 @@ async function lyricsSearch(url) {
   return json(url.searchParams.has('dbg') ? { matches: out, dbg } : { matches: out });
 }
 
-// Exact YouTube Music album tracklist. Only OLAK5uy_ IDs accepted; no arbitrary URL proxy.
+// YouTube Music metadata uses declared release years, never channel upload dates.
+async function musicBrowse(body) {
+ const day=new Date().toISOString().slice(0,10).replaceAll('-','');
+ const r=await fetch('https://music.youtube.com/youtubei/v1/browse?alt=json', {
+  method:'POST',headers:{'Content-Type':'application/json','Origin':'https://music.youtube.com','User-Agent':UA},
+  body:JSON.stringify({context:{client:{clientName:'WEB_REMIX',clientVersion:'1.'+day+'.01.00',hl:'en'}},...body}),signal:AbortSignal.timeout(9000)
+ });
+ if(!r.ok)throw Error('music browse '+r.status);return r.json();
+}
+const text = v => (v?.runs || []).map(r => r.text || '').join('');
+function releaseRow(item) {
+ const r=item?.musicTwoRowItemRenderer; if(!r)return null;
+ const endpoint=r.navigationEndpoint?.browseEndpoint || r.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint;
+ if(!/^MPRE[A-Za-z0-9_-]+$/.test(endpoint?.browseId || ''))return null;
+ const params=endpoint.params || ''; let plId='';
+ try {plId=atob(decodeURIComponent(params)).match(/OLAK5uy_[A-Za-z0-9_-]+/)?.[0] || '';}catch{}
+ const runs=r.subtitle?.runs || [], year=runs.map(x=>x.text).find(x=>/^\d{4}$/.test(x||'')) || '';
+ const thumb=r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails?.at(-1)?.url || '';
+ return {browseId:endpoint.browseId,plId,title:text(r.title),type:runs[0]?.text||'',releaseYear:year,dateSource:'youtube-music-release-year',thumb};
+}
+function parseAlbum(d,browseId,requestedPlaylistId='') {
+ const c=d.contents?.twoColumnBrowseResultsRenderer;
+ const h=c?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.musicResponsiveHeaderRenderer;
+ if(!h)throw Error('album header missing');
+ const playlistId=h.buttons?.map(x=>x.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint?.playlistId || x.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.playlistId).find(Boolean);
+ if(!/^OLAK5uy_/.test(playlistId||''))throw Error('playlist identity missing');
+ const artists=(h.straplineTextOne?.runs||[]).filter(r=>r.navigationEndpoint?.browseEndpoint?.browseId).map(r=>({name:r.text,id:r.navigationEndpoint.browseEndpoint.browseId}));
+ const rows=c.secondaryContents?.sectionListRenderer?.contents?.[0]?.musicShelfRenderer?.contents || [];
+ const tracks=rows.map(x=>x.musicResponsiveListItemRenderer).filter(Boolean).map(r=>{
+  const cols=r.flexColumns||[], title=cols[0]?.musicResponsiveListItemFlexColumnRenderer?.text;
+  const watch=title?.runs?.[0]?.navigationEndpoint?.watchEndpoint;
+  if(watch?.playlistId!==playlistId)return null;
+  const plays=cols.map(x=>text(x.musicResponsiveListItemFlexColumnRenderer?.text)).find(x=>/plays$/.test(x));
+  return {id:watch.videoId,verifiedId:requestedPlaylistId||playlistId,title:text(title),artist:artists.map(x=>x.name).join(', '),playCountText:plays||'',videoType:watch.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType||'',duration:text(r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text)};
+ }).filter(x=>x && /^[\w-]{11}$/.test(x.id)&&x.title);
+ return {browseId,requestedPlaylistId,playlistId,title:text(h.title),type:h.subtitle?.runs?.[0]?.text||'',releaseYear:(h.subtitle?.runs||[]).find(x=>/^\d{4}$/.test(x.text||''))?.text||'',artists,tracks};
+}
+
 async function albumTracks(id) {
-  const cache = caches.default;
-  const key = new Request('https://avi-music-cache.local/album-v1/' + id);
-  const hit = await cache.match(key);
-  if (hit) return hit;
-  const r = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + INNERTUBE_KEY, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
-    body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20250925.01.00', hl: 'en' } }, browseId: 'VL' + id }),
-    signal: AbortSignal.timeout(7000),
-  });
-  if (!r.ok) throw new Error('browse ' + r.status);
-  const data = await r.json();
-  const name = data.metadata?.playlistMetadataRenderer?.title || '';
-  const content = data.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents || [];
-  const rows = content.flatMap(section => section.itemSectionRenderer?.contents || []);
-  const tracks = rows.map(row => row.lockupViewModel).filter(Boolean).map(x => ({
-    id: x.contentId || '', title: x.metadata?.lockupMetadataViewModel?.title?.content || '',
-    artist: x.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts?.[0]?.text?.content || '',
-    verifiedId: x.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.playlistId || '',
-  })).filter(x => /^[A-Za-z0-9_-]{11}$/.test(x.id) && x.title && x.verifiedId === id).slice(0, 100);
-  if (!name || !tracks.length) throw new Error('album unavailable');
-  const result = json({ playlistId: id, title: name, tracks });
-  result.headers.set('Cache-Control', 'public, max-age=3600');
-  cache.put(key, result.clone()).catch(() => {});
-  return result;
+ const cache=caches.default,key=new Request('https://avi-music-cache.local/album-v2/'+id);
+ const hit=await cache.match(key);if(hit)return hit;
+ const r=await fetch('https://music.youtube.com/playlist?list='+encodeURIComponent(id),{headers:{'User-Agent':UA},signal:AbortSignal.timeout(7000)});
+ if(!r.ok)throw Error('music playlist '+r.status);
+ const html=await r.text(),bid=html.match(/(MPRE[A-Za-z0-9_-]+)/)?.[1];
+ if(!bid)throw Error('album browse identity missing');
+ const album=parseAlbum(await musicBrowse({browseId:bid}),bid,id);
+ if(!album.title||!album.tracks.length)throw Error('album unavailable');
+ album.canonicalPlaylistId=album.playlistId;album.playlistId=id;
+ const result=json(album);result.headers.set('Cache-Control','public, max-age=3600');cache.put(key,result.clone()).catch(()=>{});return result;
+}
+
+function musicSections(d) {
+ return d.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer || null;
+}
+function rowsFromMusic(d) {
+ const sections=musicSections(d)?.contents || d.continuationContents?.sectionListContinuation?.contents || [];
+ const container=sections[0]?.gridRenderer || sections[0]?.musicCarouselShelfRenderer || d.continuationContents?.gridContinuation;
+ return {items:container?.items||container?.contents||[],continuations:container?.continuations||[]};
+}
+async function musicSimilarArtists(id){
+ const key=new Request('https://avi-music-cache.local/similar-v1/'+id),cache=caches.default;
+ const hit=await cache.match(key);if(hit)return hit;
+ const page=await musicBrowse({browseId:id});
+ const header=page.header?.musicImmersiveHeaderRenderer||page.header?.musicVisualHeaderRenderer;
+ if(!header?.title)throw Error('artist identity missing');
+ const shelf=(musicSections(page)?.contents||[]).map(x=>x.musicCarouselShelfRenderer).find(r=>text(r?.header?.musicCarouselShelfBasicHeaderRenderer?.title)==='Fans might also like');
+ const artists=(shelf?.contents||[]).map(x=>x.musicTwoRowItemRenderer).filter(Boolean).map(r=>({name:text(r.title),id:r.navigationEndpoint?.browseEndpoint?.browseId,avatar:r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails?.at(-1)?.url||''})).filter(a=>/^UC[\w-]{22}$/.test(a.id||'')&&a.name&&a.id!==id);
+ const result=json({artistId:id,artistName:text(header.title),source:'youtube-music-fans-might-also-like',artists});
+ result.headers.set('Cache-Control','public, max-age=86400');cache.put(key,result.clone()).catch(()=>{});return result;
+}
+async function musicArtistReleases(id) {
+ const key=new Request('https://avi-music-cache.local/artist-music-v1/'+id),cache=caches.default;
+ const hit=await cache.match(key);if(hit)return hit;
+ const page=await musicBrowse({browseId:id});
+ const header=page.header?.musicImmersiveHeaderRenderer || page.header?.musicVisualHeaderRenderer;
+ if(!header?.title)throw Error('music artist identity missing');
+ const sourceArtistId=header.subscriptionButton?.subscribeButtonRenderer?.channelId||id;
+ const sections=musicSections(page)?.contents||[],releases=[],seen=new Set();let partial=false;
+ const add=(row,category,rank=0,recencyRank=0)=>{
+  const r=releaseRow(row);if(!r||!r.plId)return;
+  if(!seen.has(r.browseId)){r.artistId=id;r.artistName=text(header.title);r.releaseType=/single/i.test(r.type)?'single':/EP/i.test(r.type)?'ep':category==='singles'?'single':'album';r.popularityRank=rank;r.recencyRank=recencyRank;releases.push(r);seen.add(r.browseId);}
+  else {const r= releases.find(x=>x.browseId===releaseRow(row).browseId);if(rank)r.popularityRank=rank;if(recencyRank)r.recencyRank=recencyRank;}
+ };
+ for(const section of sections){
+  const shelf=section.musicCarouselShelfRenderer,title=text(shelf?.header?.musicCarouselShelfBasicHeaderRenderer?.title);
+  const category=title==='Albums'?'albums':title==='Singles & EPs'?'singles':null;if(!category)continue;
+  for(const item of shelf.contents||[])add(item,category);
+  const endpoint=shelf.header.musicCarouselShelfBasicHeaderRenderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint||shelf.header.musicCarouselShelfBasicHeaderRenderer.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint;
+  if(!endpoint){partial=true;continue;}
+  try {
+   const base={browseId:endpoint.browseId,params:endpoint.params},first=await musicBrowse(base);
+   const options=musicSections(first)?.header?.musicSideAlignedItemRenderer?.endItems?.[0]?.musicSortFilterButtonRenderer?.menu?.musicMultiSelectMenuRenderer?.options||[];
+   const sortToken=name=>{
+    const option=options.map(x=>x.musicMultiSelectMenuItemRenderer).find(x=>text(x?.title)===name);
+    return option?.selectedCommand?.commandExecutorCommand?.commands?.find(x=>x.browseSectionListReloadEndpoint)?.browseSectionListReloadEndpoint?.continuation?.reloadContinuationData?.continuation;
+   };
+   const recencyToken=sortToken('Recency');
+   let current=recencyToken?await musicBrowse({...base,continuation:recencyToken}):first,recencyRank=0;
+   for(let i=0;i<6;i++){
+    const rows=rowsFromMusic(current);rows.items.forEach(x=>add(x,category,0,recencyToken?++recencyRank:0));
+    const token=rows.continuations?.[0]?.nextContinuationData?.continuation;
+    if(!token)break;if(i===5){partial=true;break;}
+    current=await musicBrowse({...base,continuation:token});
+   }
+   if(category==='albums'){
+    const token=sortToken('Popularity');
+    if(token){const sorted=rowsFromMusic(await musicBrowse({...base,continuation:token}));sorted.items.forEach((x,i)=>add(x,category,i+1));}
+   }
+  }catch{partial=true;}
+ }
+ if(!releases.length)throw Error('music releases unavailable');
+ const result=json({artistId:id,sourceArtistId,artistName:text(header.title),dateSource:'youtube-music-release-year',releases,partial});
+ result.headers.set('Cache-Control','public, max-age=3600');cache.put(key,result.clone()).catch(()=>{});return result;
+}
+async function artistReleases(id){
+ try{return await musicArtistReleases(id);}catch{
+  const response=await legacyArtistReleases(id),data=await response.json();
+  data.releases=data.releases.map(r=>({...r,uploadDate:r.date,date:'',dateSource:'unknown'}));data.partial=true;
+  return json(data);
+ }
 }
 
 // Artist releases are scoped to the exact channel response's "Albums & Singles" shelf.
 // A release's uploader channel may differ from its Topic channel; do not rely
 // on the release's author ID for channel identity. Never parse recommendations.
-async function artistReleases(id) {
+async function legacyArtistReleases(id) {
   const key = new Request('https://avi-music-cache.local/artist-v2/' + id), cache = caches.default;
   const hit = await cache.match(key); if (hit) return hit;
   const browse = async params => {
@@ -354,9 +448,13 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    const similarId=url.pathname.match(/^\/similar-artists\/(UC[A-Za-z0-9_-]{22})\/?$/)?.[1];
+    if(similarId){try{return await musicSimilarArtists(similarId);}catch(e){return json({error:String(e?.message||e)},502);}}
+    const musicArtistId = url.pathname.match(/^\/music-artist\/(UC[A-Za-z0-9_-]{22})\/?$/)?.[1];
+    if(musicArtistId){try{return await musicArtistReleases(musicArtistId);}catch(e){return json({error:String(e?.message||e)},502);}}
     const artistId = url.pathname.match(/^\/artist\/(UC[A-Za-z0-9_-]{22})\/?$/)?.[1];
     if (artistId) {
-      try { return await artistReleases(artistId); }
+      try { return await legacyArtistReleases(artistId); }
       catch (e) { return json({ error: String(e?.message || e) }, 502); }
     }
     const albumId = url.pathname.match(/^\/album\/(OLAK5uy_[A-Za-z0-9_-]{10,80})\/?$/)?.[1];
