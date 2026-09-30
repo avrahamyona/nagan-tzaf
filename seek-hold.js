@@ -26,7 +26,7 @@
   const s=active;if(!s)return;
   clearTimeout(s.delay);clearInterval(s.interval);
   if(s.long)update();active=null;s.button.classList.remove('is-pressing');
-  if(s.long&&s.wasPlaying&&media()===s.media&&!document.hidden)s.media.play().catch(()=>{});
+  if(s.long){userPaused=s.savedUserPaused;if(s.wasPlaying&&media()===s.media&&!document.hidden)s.media.play().catch(()=>{});}
   if(s.button.hasPointerCapture?.(s.pointer))try{s.button.releasePointerCapture(s.pointer);}catch{}
   if(!s.long&&commit)s.tap();
  }
@@ -38,7 +38,7 @@
    e.preventDefault();e.stopImmediatePropagation();finish(false);
    const s=active={button,direction,tap,pointer:e.pointerId,long:false};
    button.classList.add('is-pressing');try{button.setPointerCapture(e.pointerId);}catch{}
-   s.delay=setTimeout(()=>{if(active!==s)return;s.long=true;s.media=media();s.wasPlaying=!s.media.paused;s.start=position();s.media.pause();s.at=performance.now();s.interval=setInterval(update,80);},HOLD_MS);
+   s.delay=setTimeout(()=>{if(active!==s)return;s.long=true;s.media=media();s.wasPlaying=!s.media.paused;s.savedUserPaused=userPaused;userPaused=true;s.start=position();s.media.pause();s.at=performance.now();s.interval=setInterval(update,80);},HOLD_MS);
   },true);
   button.addEventListener('pointerup',e=>{if(active?.button!==button)return;e.preventDefault();e.stopImmediatePropagation();finish(true);},true);
   for(const type of ['pointercancel','lostpointercapture'])button.addEventListener(type,e=>{if(active?.button!==button)return;e.stopImmediatePropagation();finish(false);},true);
