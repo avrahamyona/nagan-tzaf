@@ -11,6 +11,7 @@ const domainAlbumChoices={
 const domainArtistCache=new Map;
 async function buildMusicDomain(spec){
  let tracks=spec.loadTracks?await spec.loadTracks():await buildHomeVibe(spec);if(spec.loadTracks&&!tracks.length){searchCache.clear();tracks=await spec.loadTracks();}if(!tracks.length&&!spec.loadTracks){spec.songs.forEach(([artist,title])=>searchCache.delete((artist+' '+title).trim().toLowerCase()));tracks=await buildHomeVibe(spec);}
+ window.genreProgressHooks?.get(spec.name)?.(tracks);
  const candidates=spec.artists||[...new Set((spec.songs||[]).map(x=>x[0]))].map(name=>({name}));
  const results=await Promise.allSettled(candidates.map(candidate=>{
  if(domainArtistCache.has(candidate.ch||candidate.name))return domainArtistCache.get(candidate.ch||candidate.name);
