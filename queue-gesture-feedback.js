@@ -1,0 +1,15 @@
+// Blue queue feedback follows the finger, commits once on a full swipe, then closes.
+attachTrackSwipe=function(row,track){
+ if(row.dataset.blueQueueGesture)return;row.dataset.blueQueueGesture='1';row.classList.add('blue-queue-row');
+ const control=document.createElement('button');control.type='button';control.className='blue-queue-indicator';control.innerHTML=gestureIcon('queue-first');control.setAttribute('aria-label','הבא בתור');row.append(control);
+ let origin=null,dx=0,locked=false,suppress=false,hideTimer=null,placement='next';
+ const clear=()=>{clearTimeout(hideTimer);origin=null;dx=0;locked=false;row.classList.remove('queue-drag-active','queue-reveal');row.style.removeProperty('--queue-offset');row.style.removeProperty('--queue-reveal');};
+ const enqueue=()=>{if(!current()){toast('התחל לנגן שיר לפני הוספה לתור');clear();return;}if(placement==='next')state.queue.splice(state.qi+1,0,track);else state.queue.push(track);save();if($('queueSheet').classList.contains('open'))renderQueue();clear();toast(placement==='next'?'הבא בתור':'נוסף לסוף התור',1400);};
+ control.onclick=e=>{e.stopPropagation();enqueue();};
+ row.addEventListener('touchstart',e=>{if(e.touches.length!==1||e.target.closest('button,input,a,.qhandle'))return;clear();origin={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
+ row.addEventListener('touchmove',e=>{if(!origin)return;const x=e.touches[0].clientX-origin.x,y=e.touches[0].clientY-origin.y;if(!locked&&Math.abs(y)>Math.abs(x)&&Math.abs(y)>10){clear();return;}if(Math.abs(x)>14&&Math.abs(x)>Math.abs(y)*1.3)locked=true;if(!locked)return;dx=x;placement=dx<0?'next':'end';control.innerHTML=gestureIcon(placement==='next'?'queue-first':'queue-last');control.setAttribute('aria-label',placement==='next'?'הבא בתור':'בסוף התור');row.classList.add('queue-drag-active');row.style.setProperty('--queue-offset',Math.max(-112,Math.min(112,dx))+'px');row.style.setProperty('--queue-reveal',Math.min(1,Math.abs(dx)/54));control.style.left=dx>0?'8px':'auto';control.style.right=dx<0?'8px':'auto';},{passive:true});
+ row.addEventListener('touchend',()=>{if(!locked){clear();return;}suppress=true;setTimeout(()=>suppress=false,400);if(Math.abs(dx)>=100){enqueue();return;}if(Math.abs(dx)<40){clear();return;}row.classList.remove('queue-drag-active');row.classList.add('queue-reveal');row.style.setProperty('--queue-offset',(dx>0?64:-64)+'px');row.style.setProperty('--queue-reveal','1');origin=null;hideTimer=setTimeout(clear,1800);},{passive:true});
+ row.addEventListener('touchcancel',clear,{passive:true});row.addEventListener('click',e=>{if(e.target.closest('.blue-queue-indicator'))return;if(suppress||row.classList.contains('queue-reveal')){e.preventDefault();e.stopImmediatePropagation();clear();}},true);
+ document.addEventListener('pointerdown',e=>{if(!row.contains(e.target))clear();},{passive:true});
+};
+const blueBadgeBefore=paintEngineBadge;paintEngineBadge=function(){blueBadgeBefore();if($('engineBadge'))$('engineBadge').innerHTML=$('engineBadge').innerHTML.replace(/v\d+/g,'v150');};if($('verChip')?.lastChild)$('verChip').lastChild.textContent='v150';paintEngineBadge();
