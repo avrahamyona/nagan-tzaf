@@ -14,7 +14,7 @@ resolveAudioUrl=function(id){
 };
 function prepareQueueAudio(){
  if(videoMode||userPaused||!current())return;
- const upcoming=state.queue.slice(state.qi+1,state.qi+3);
+ const upcoming=[...(state.priorityQueue||[]),...state.queue.slice(state.qi+1)].slice(0,2);
  if(state.repeat==='one')upcoming.unshift(current());
  else if(state.repeat==='all'&&upcoming.length<2)upcoming.push(...state.queue.slice(0,2-upcoming.length));
  for(const track of upcoming)if(track?.id)resolveAudioUrl(track.id);
