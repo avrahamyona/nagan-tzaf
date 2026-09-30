@@ -14,14 +14,14 @@ async function buildPersonalMix(){
  const rows=await Promise.allSettled(artists.map(async a=>songDiscovery(await within(searchMusicCached(a.name),17000)).filter(t=>t.ch===a.ch||artistKey(t.artist)===artistKey(a.name)).filter(t=>setSignals(t)<2&&(!t.dur||t.dur<=600)&&!/(האלבום המלא|full album|complete album)/i.test(t.title)).slice(0,6)));
  const groups=rows.map(r=>r.status==='fulfilled'?r.value:[]);const seen=new Set,tracks=[];
  for(let i=0;i<6;i++)for(const g of groups){const t=g[i];if(t&&!seen.has(t.id)){seen.add(t.id);tracks.push(t);}}
- return {tracks,names:artists.filter((a,i)=>groups[i].length).map(a=>a.name)};
+ return {tracks,artists:artists.filter((a,i)=>groups[i].length),names:artists.filter((a,i)=>groups[i].length).map(a=>a.name)};
 }
 function addPersonalMix(){
  const box=$('listenBody');if(box.querySelector('#personalArtistMix')||!tasteArtists().length)return;
  const target=[...box.children].find(sec=>sec.querySelector('.asec-title')?.textContent.replace('›','').replace('‹','').trim()==='בחירות מובילות עבורך');if(!target)return;const body=target.querySelector('.asec-body');if(!body)return;
  const seed=tasteArtists()[0],track=state.history.find(t=>t.ch===seed.ch||artistKey(t.artist)===artistKey(seed.name));
  let busy=false;const card=heroCard({title:'המיקס שלך',kicker:'לפי ההאזנה שלך',desc:seed.name+' ואמנים דומים',grad:GRADS[0],img:track?sqThumb(track.id):'',tap:async()=>{
- if(busy)return;busy=true;toast('בונה את המיקס שלך...');try{const mix=await buildPersonalMix();if(mix.names.length<2||!mix.tracks.length)return toast('אין כרגע מספיק אמנים מתאימים למיקס');sectionTracks('המיקס שלך',mix.tracks);$('plOwner').textContent=mix.names.join(' · ');}catch{toast('המיקס לא זמין כרגע');}finally{busy=false;}
+ if(busy)return;busy=true;toast('בונה את המיקס שלך...');try{const mix=await buildPersonalMix();if(mix.names.length<2||!mix.tracks.length)return toast('אין כרגע מספיק אמנים מתאימים למיקס');await openMusicDomain({name:'המיקס שלך',desc:mix.names.join(' · '),songs:[],artists:mix.artists,loadTracks:async()=>mix.tracks});}catch{toast('המיקס לא זמין כרגע');}finally{busy=false;}
  }});card.id='personalArtistMix';body.prepend(card);
 }
 const listenBeforeMix=renderListen;renderListen=async function(){await listenBeforeMix();addPersonalMix();};addPersonalMix();
