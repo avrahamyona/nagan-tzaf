@@ -444,10 +444,36 @@ async function legacyArtistReleases(id) {
   return result;
 }
 
+async function publicPlaylistTracks(id){
+ const browse=async body=>{const day=new Date().toISOString().slice(0,10).replaceAll('-','');const r=await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false',{method:'POST',headers:{'Content-Type':'application/json','User-Agent':UA},body:JSON.stringify({context:{client:{clientName:'WEB',clientVersion:'2.'+day+'.01.00',hl:'en'}},...body}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('playlist source unavailable');return r.json();};
+ const first=await browse({browseId:'VL'+id});
+ const metadata=first.metadata?.playlistMetadataRenderer;
+ if(!metadata?.title||!String(metadata.androidAppindexingLink||metadata.iosAppindexingLink||'').includes('list='+id))throw Error('playlist is private, unavailable or needs sign-in');
+ const tracks=[],seenTokens=new Set;let skipped=0,next='',data=first;
+ for(let page=0;page<20;page++){
+  next='';
+  const roots=page===0?[first.contents?.twoColumnBrowseResultsRenderer?.tabs?.find(t=>t.tabRenderer?.selected)?.tabRenderer?.content||first.contents]:[data.onResponseReceivedActions,data.onResponseReceivedEndpoints];
+  function walk(x){if(!x||typeof x!=='object')return;
+   if(x.playlistVideoRenderer){const v=x.playlistVideoRenderer;if(v.isPlayable===false||!v.videoId){skipped++;return;}const title=text(v.title)||v.title?.simpleText||'';if(!title){skipped++;return;}tracks.push({id:v.videoId,title,artist:text(v.shortBylineText),ch:v.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId||'',dur:String(v.lengthText?.simpleText||'').split(':').reduce((s,v)=>s*60+Number(v),0)});return;}
+   if(x.lockupViewModel){const v=x.lockupViewModel;if(v.contentType!=='LOCKUP_CONTENT_TYPE_VIDEO')return;const m=v.metadata?.lockupMetadataViewModel,title=m?.title?.content,parts=m?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts||[];if(!/^[\w-]{11}$/.test(v.contentId||'')||!title){skipped++;return;}const by=parts[0]?.text;const badge=v.contentImage?.thumbnailViewModel?.overlays?.flatMap(o=>o.thumbnailBottomOverlayViewModel?.badges||[]).map(b=>b.thumbnailBadgeViewModel?.text).find(t=>/^\d+(:\d+)+$/.test(t||''));tracks.push({id:v.contentId,title,artist:by?.content||'',ch:by?.commandRuns?.[0]?.onTap?.innertubeCommand?.browseEndpoint?.browseId||'',dur:badge?badge.split(':').reduce((s,v)=>s*60+Number(v),0):0});return;}
+   if(x.continuationItemRenderer){next=x.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token||next;return;}
+   if(x.continuationItemViewModel){next=x.continuationItemViewModel.continuationCommand?.innertubeCommand?.continuationCommand?.token||next;return;}
+   for(const value of Object.values(x))if(typeof value==='object')walk(value);
+  }
+  roots.forEach(walk);
+  if(tracks.length>2000)throw Error('playlist too large; nothing imported');
+  if(!next)return json({playlistId:id,title:metadata.title,tracks,skipped,complete:true});
+  if(tracks.length>=2000||seenTokens.has(next))throw Error('playlist too large or pagination incomplete');seenTokens.add(next);data=await browse({continuation:next});
+ }
+ throw Error('playlist exceeds20pages; nothing imported');
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    const playlistId=url.pathname.match(/^\/playlist\/([A-Za-z0-9_-]{10,100})\/?$/)?.[1];
+    if(playlistId){try{return await publicPlaylistTracks(playlistId);}catch(e){return json({error:String(e?.message||e)},502);}}
     const similarId=url.pathname.match(/^\/similar-artists\/(UC[A-Za-z0-9_-]{22})\/?$/)?.[1];
     if(similarId){try{return await musicSimilarArtists(similarId);}catch(e){return json({error:String(e?.message||e)},502);}}
     const musicArtistId = url.pathname.match(/^\/music-artist\/(UC[A-Za-z0-9_-]{22})\/?$/)?.[1];
