@@ -9,7 +9,8 @@ const domainAlbumChoices={
  'ישי ריבו':['שטח אפור','תוכו רצוף אהבה']
 };
 async function buildMusicDomain(spec){
- const tracks=await buildHomeVibe(spec),names=[...new Set(spec.songs.map(x=>x[0]))];
+ let tracks=await buildHomeVibe(spec);if(!tracks.length){spec.songs.forEach(([artist,title])=>searchCache.delete((artist+' '+title).trim().toLowerCase()));tracks=await buildHomeVibe(spec);}
+ const names=[...new Set(spec.songs.map(x=>x[0]))];
  const results=await Promise.allSettled(names.map(async name=>{
   const aliases={"עומר אדם":"Omer Adam","נועה קירל":"Noa Kirel","שלמה ארצי":"Shlomo Artzi","אריק איינשטיין":"Arik Einstein","אייל גולן":"Eyal Golan","זהבה בן":"Zehava Ben","פאר טסי":"Peer Tasi","משה פרץ":"Moshe Peretz","עידן רייכל":"Idan Raichel","ישי ריבו":"Ishay Ribo","אבי ביטר":"Avi Bitter","זוהר ארגוב":"Zohar Argov","עופר לוי":"Ofer Levi","חיים משה":"Haim Moshe"};
   const search=await within(pipedFetch('/search?q='+encodeURIComponent(name)+'&filter=music_artists'),12000);
@@ -31,6 +32,7 @@ async function openMusicDomain(spec){
   if(data.artists.length){const{sec,body}=sectionEl('אמנים מומלצים בתחום','hscroll circles');data.artists.forEach((a,i)=>{const card=circleArtistCard(a.name,a.avatar,GRADS[i%GRADS.length],()=>openArtist(a.ch,a.name,a.avatar));card.querySelector('.cs').textContent='פתח אמן';const img=card.querySelector('img');if(img){img.addEventListener('error',()=>{const fallback=document.createElement('div');fallback.className='cc-ph';const initial=document.createElement('span');initial.textContent=a.name[0];fallback.appendChild(initial);img.replaceWith(fallback);});}body.appendChild(card);});box.appendChild(sec);}
   const releases=sectionEl('אלבומים ו-EP מומלצים','hscroll');data.releases.forEach(a=>{const card=albumCardEl(a);const img=card.querySelector('img');img.referrerPolicy='no-referrer';img.src=a.thumb.replace(/=w\d+-h\d+.*$/,'=s544');releases.body.appendChild(card);});if(!data.releases.length)releases.body.innerHTML='<p class="catalog-note dim">עדיין אין בחירת אלבום מאומתת בתחום הזה.</p>';box.appendChild(releases.sec);
   if(data.tracks.length){const{sec,body,heading}=sectionEl('שירים בתחום');heading.disabled=false;heading.addEventListener('click',()=>sectionTracks(spec.name,data.tracks));data.tracks.forEach((t,i)=>body.appendChild(trackRow(t,{artistLink:true,onPlay:()=>playQueue(data.tracks,i)})));box.appendChild(sec);}
+  if(!data.tracks.length){const unavailable=document.createElement('p');unavailable.className='catalog-note dim';unavailable.textContent='חיפוש השירים לא זמין כרגע. האמנים והאלבומים זמינים למעלה.';box.appendChild(unavailable);}
   const note=document.createElement('p');note.className='catalog-note dim';note.textContent='מבחר פתיחה לפי האווירה. אלבומים ו-EP יחד, רק כשזהותם מופיעה בקטלוג האמן.';box.appendChild(note);
  }catch{if(seq===alSeq)box.innerHTML='<div class="empty"><p>המבחר לא זמין כרגע.</p></div>';}
 }
