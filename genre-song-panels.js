@@ -3,6 +3,7 @@ const genreSpecSet=new Set(Object.values(categoryDomains));
 function genreCatalogCursor(spec,artists){
  if(spec===arabicClassicSpec)return arabicCatalogBrowser();
  const isPiyyut=spec===categoryDomains[arabicCategoryNames[0]];
+ const progressive=[];
  const cursors=artists.map(a=>({a,q:a.name,next:null,started:false,done:false}));let pool=[],busy=false;
  return async function(existing=[]){
   if(busy)return {tracks:[],done:false};busy=true;let success=0;
@@ -11,7 +12,8 @@ function genreCatalogCursor(spec,artists){
     const results=await Promise.allSettled(cursors.filter(c=>!c.done).map(async c=>{
      const path=c.started?'/nextpage/search?q='+encodeURIComponent(c.q)+'&filter=music_songs&nextpage='+encodeURIComponent(c.next):'/search?q='+encodeURIComponent(c.q)+'&filter=music_songs';
      const j=await within(pipedFetch(path),15000);success++;c.started=true;c.next=j.nextpage;c.done=!c.next||c.next==='null';
-     return (j.items||[]).filter(x=>x.type==='stream').map(x=>({...mapStream(x),musicCatalog:true,_domainScope:spec.name})).filter(t=>t.id&&t.ch===c.a.ch&&t.dur>=90&&setSignals(t)<2&&(!spec.live||/live|הופעה|בהופעה|קיסריה/i.test(t.title))&&(!isPiyyut||!/(מאוהב בגשם|לא מוותר|חפלה)/.test(t.title))&&(!isPiyyut||/פיוט|סליחות|אל גליל|אל בעניי|אל בעוני|אלי חסרה|לך אלי|אלי בזמן|אלי שוב|אלי תשוקתי|נא אלי|מול אלי|הבדלה|פאר נעטר|שבת|מקא[םמ]|Piyut|Selichot|עמל חיינו|אדון|אליהו|אלוהים|אלהים|אלוהי|אלוקי|יהי|ירושלים|ציון|יגדל|שמע|חביבי|אוחיל|ידיד|דרור|אל נא|יוצר|אהלל/i.test(t.title)));
+     const ready=(j.items||[]).filter(x=>x.type==='stream').map(x=>({...mapStream(x),musicCatalog:true,_domainScope:spec.name})).filter(t=>t.id&&t.ch===c.a.ch&&t.dur>=90&&setSignals(t)<2&&(!spec.live||/live|הופעה|בהופעה|קיסריה/i.test(t.title))&&(!isPiyyut||!/(מאוהב בגשם|לא מוותר|חפלה)/.test(t.title))&&(!isPiyyut||/פיוט|סליחות|אל גליל|אל בעניי|אל בעוני|אלי חסרה|לך אלי|אלי בזמן|אלי שוב|אלי תשוקתי|נא אלי|מול אלי|הבדלה|פאר נעטר|שבת|מקא[םמ]|Piyut|Selichot|עמל חיינו|אדון|אליהו|אלוהים|אלהים|אלוהי|אלוקי|יהי|ירושלים|ציון|יגדל|שמע|חביבי|אוחיל|ידיד|דרור|אל נא|יוצר|אהלל/i.test(t.title)));
+     progressive.push(...ready);window.genreProgressHooks?.get(spec.name)?.(uniqueSongList([...existing,...progressive]));return ready;
     }));
     const merged=uniqueSongList([...existing,...pool,...results.flatMap(r=>r.status==='fulfilled'?r.value:[])]),ids=new Set(existing.map(t=>t.id));pool=byKnownViews(merged.filter(t=>!ids.has(t.id)));
     if(cursors.every(c=>c.done))break;
