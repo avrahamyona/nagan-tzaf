@@ -18,7 +18,18 @@ searchLyrics=async function(q){
  }
  // A known lyric-word match must not wait for the remote candidate chain.
  if(local.length)return local.sort((a,b)=>b.score-a.score).slice(0,5);
- return originalSearchLyrics(q);
+ const remote=within(originalSearchLyrics(q),12000).catch(()=>[]);
+ const seeds=[{id:'kQ5OFJxgL0M',title:'מחזיק לך את היד',artist:'Eyal Golan'},...(state.history||[]).slice(0,4)];
+ const found=[];const seen=new Set();
+ await Promise.allSettled(seeds.slice(0,5).map(async t=>{
+   const key=lyricKey(t.artist)+'|'+lyricKey(t.title);if(seen.has(key))return;seen.add(key);
+   const j=await within(fetchLyrics(t),8000);if(!j)return;
+   const text=j.plainLyrics||parseLRC(j.syncedLyrics||'').map(x=>x.text).join('\n');
+   const hit=text.split('\n').map(line=>({line,score:lyricLineScore(line,q)})).sort((a,b)=>b.score-a.score)[0];
+   if(hit?.score)found.push({title:t.title,artist:t.artist,id:t.id,line:hit.line,score:hit.score});
+ }));
+ if(found.length)return found.sort((a,b)=>b.score-a.score).slice(0,5);
+ return remote;
 };
 function renderLyricSnippet(el,line,q){
  const words=String(line||'').split(/\s+/),queries=normTxt(q).split(' ').filter(Boolean);
