@@ -16,3 +16,5 @@ runSearch=async function(q,pill){const spec=categoryDomains[q];if(!spec||searchS
 // Fill each style's singalong list from the compatible, verified mood repertoire.
 const friendMoodMap=['מזרחי שמח','מזרחי דיכאון','אהבה','מזרחי שמח','נוסטלגיה מזרחית','פופ שמח','ארץ ישראל'];
 friendsPlaylists.forEach((spec,i)=>{const seen=new Set(spec.songs.map(x=>x.join('|')));for(const pair of homeVibes.find(s=>s.name===friendMoodMap[i]).songs){if(!seen.has(pair.join('|'))){spec.songs.push(pair);seen.add(pair.join('|'));}}});
+
+for(const q of ['מוזיקה עברית','מוזיקה מזרחית','פופ ישראלי','מוזיקה יהודית','הופעות חיות'])categoryDomains[q].expand=true;categoryDomains['הופעות חיות'].live=true;
