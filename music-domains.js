@@ -26,7 +26,7 @@ async function buildMusicDomain(spec){
   if(!id)return null;
   const artist={name,ch:id,avatar};
   const catalog=await catalogForTaste(artist);const choices=domainAlbumChoices[name]||[];
-  const eligible=catalog.filter(a=>['album','short'].includes(releaseKind(a))&&!/(לילדים|שירי ילדים|children|kids|כפולה|remix|רמיקס)/i.test(a.title));
+  const eligible=catalog.filter(a=>(!candidate.releaseTitles||candidate.releaseTitles.some(t=>normTxt(t)===normTxt(a.title)))&&['album','short'].includes(releaseKind(a))&&!/(לילדים|שירי ילדים|children|kids|כפולה|remix|רמיקס)/i.test(a.title));
   if(spec.recent)eligible.sort((a,b)=>(a.recencyRank||9999)-(b.recencyRank||9999));
   const explicit=spec.recent?eligible.filter(a=>Number(a.releaseYear)>=new Date().getFullYear()-1).slice(0,2):eligible.filter(a=>choices.some(title=>normTxt(a.title)===normTxt(title)));
   const releases=(explicit.length?explicit:eligible.sort((a,b)=>(a.popularityRank||9999)-(b.popularityRank||9999))).slice(0,2);
