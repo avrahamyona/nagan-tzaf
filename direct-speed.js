@@ -45,3 +45,7 @@ loadTrack=function(track,options={}){
   }catch{/* Keep the original stream running; its existing timeout owns failure. */}
  },600);
 };
+const paintBadgeBeforeSpeed=paintEngineBadge;
+paintEngineBadge=function(){paintBadgeBeforeSpeed();const badge=$('engineBadge');if(badge)badge.innerHTML=badge.innerHTML.replace(/v\d+/g,'v145');};
+if($('verChip')?.lastChild)$('verChip').lastChild.textContent='v145';
+paintEngineBadge();
