@@ -20,3 +20,8 @@
  #page-album:not(.release-list).on .ascroll{padding:0 24px 30px;height:100%;}
  body:has(#page-album:not(.release-list).on)::after{content:'';position:fixed;inset:0;z-index:17;background:rgba(0,0,0,.24);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);pointer-events:none;}
 }
+
+/* v156: narrow desktop mini-player, centered in the window. */
+@media(min-width:820px){
+ #mini{left:50%!important;right:auto!important;width:min(520px,calc(100vw - 64px))!important;bottom:18px!important;transform:translateX(-50%)!important;margin:0!important;max-width:none!important;}
+}
