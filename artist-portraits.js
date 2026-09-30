@@ -4,7 +4,7 @@ function directArtistImage(src){
  return src||'';
 }
 const verifiedPortraitCache=new Map;
-async function artistPortrait(a){
+async function verifiedArtistPortrait(a){
  const key=a.ch||a.id;if(!key)return directArtistImage(a.avatar||'');
  if(!verifiedPortraitCache.has(key))verifiedPortraitCache.set(key,(async()=>{try{const profile=await within(pipedFetch('/channel/'+key),12000);if(profile.id===key&&profile.avatarUrl)return directArtistImage(profile.avatarUrl);}catch{}return directArtistImage(a.avatar||'');})());
  return verifiedPortraitCache.get(key);
@@ -15,7 +15,7 @@ function domainArtistCard(a,i){
  let at=0;const image=document.createElement('img');image.alt=a.name;image.referrerPolicy='no-referrer';image.decoding='async';
  const tryNext=()=>{if(at<candidates.length)image.src=candidates[at++];};
  image.onload=()=>{if(image.naturalWidth>24){a.avatar=image.src;bg.replaceChildren(image);}};
- image.onerror=tryNext;tryNext();artistPortrait(a).then(url=>{add(url);if(!image.naturalWidth)tryNext();});return card;
+ image.onerror=tryNext;tryNext();verifiedArtistPortrait(a).then(url=>{add(url);if(!image.naturalWidth)tryNext();});return card;
 }
 // Existing circle shelves get the same first-party image route and exact-name lookup.
 const circleBeforePortraits=circleArtistCard;
@@ -25,3 +25,18 @@ circleArtistCard=function(name,avatar,grad,tap){
  if(!avatar){(async()=>{try{const result=await within(pipedFetch('/search?q='+encodeURIComponent(name)+'&filter=music_artists'),12000);const found=(result.items||[]).find(x=>x.type==='channel'&&x.verified&&artistKey(x.name)===artistKey(name));if(!found)return;const url=directArtistImage(found.thumbnail);if(!url)return;const image=document.createElement('img');image.alt=name;image.referrerPolicy='no-referrer';image.onload=()=>{if(image.naturalWidth>24&&bg.isConnected)bg.replaceChildren(image);};image.src=url;}catch{}})();}
  return card;
 };
+
+// Preserve the existing name/channel signature used by radio and artist rows.
+const legacyArtistPortrait=artistPortrait;
+artistPortrait=async function(name,chId=''){
+ try{const alias={'עידן רייכל':'Idan Raichel','מושיק עפיה':'Moshik Afia','איתי לוי':'Itay Levi','אייל גולן':'Eyal Golan','עומר אדם':'Omer Adam','נועה קירל':'Noa Kirel'}[name];const j=await pipedFetch('/search?q='+encodeURIComponent(name)+'&filter=music_artists');const match=(j.items||[]).find(c=>c.type==='channel'&&c.verified&&[name,alias].filter(Boolean).some(n=>artistKey(n)===artistKey(c.name)));if(match?.thumbnail)return directArtistImage(match.thumbnail);}catch{}
+ if(chId){const url=await verifiedArtistPortrait({name,ch:chId});if(url)return url;}
+ return directArtistImage(await legacyArtistPortrait(name,chId));
+};
+
+fillArtistPortrait=function(card,name,chId=''){
+ const old=card.querySelector('img');if(old?.naturalWidth>24)return;
+ artistPortrait(name,chId).then(url=>{if(!url||!card.isConnected||card.querySelector('img')?.naturalWidth>24)return;const img=document.createElement('img');img.alt=name;img.referrerPolicy='no-referrer';img.decoding='async';img.onload=()=>{if(img.naturalWidth<=24||!card.isConnected)return;const target=card.querySelector('.stph,.cc-ph,.artistph,img');if(target)target.replaceWith(img);};img.src=directArtistImage(url);});
+};
+const stationBeforePortraits=stationCard;
+stationCard=function(name,avatar,tap){const card=stationBeforePortraits(name,directArtistImage(avatar),tap);const img=card.querySelector('img');if(img){img.referrerPolicy='no-referrer';img.addEventListener('error',()=>fillArtistPortrait(card,name));}return card;};
