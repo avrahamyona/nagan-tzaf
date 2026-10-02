@@ -76,7 +76,7 @@ loadTrack=function(track,options={}){
  else recoverHealthyPlayback(a);
 };
 audioEl.addEventListener('playing',()=>{const a=activeDirectAttempt;if(!a||!currentAttempt(a))return;stopAttemptTimer(a);consecutiveUnavailable=0;markDirectHealth(a.mediaId||a.track.id,'decoded',audioEl.currentSrc);if(a.alternate){markDirectHealth(a.track.id,'alternate',audioEl.currentSrc);directHealth.get(a.track.id).mediaId=a.mediaId;}});
-audioEl.addEventListener('waiting',()=>{const a=activeDirectAttempt;if(a&&currentAttempt(a)&&!userPaused)armAttempt(a,10000);});
+audioEl.addEventListener('waiting',()=>{const a=activeDirectAttempt;if(a&&currentAttempt(a)&&!userPaused){stopAttemptTimer(a);const at=audioEl.currentTime;a.timer=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&audioEl.currentTime<=at+.25)recoverHealthyPlayback(a);},10000);}});
 // Prefer byte-verified candidates without holding up the selected song or claiming audio was decoded.
 const relatedBeforeHealth=buildRelatedAutoplay;
 buildRelatedAutoplay=async function(seed,existing){
