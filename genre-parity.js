@@ -61,3 +61,10 @@ advance=async function(direction,automatic){
 const parityStyle=document.createElement('style');parityStyle.textContent='@media(min-width:820px){.genre-start{display:block;margin:20px auto;padding:12px 30px;border-radius:24px;background:var(--accent);color:white;font:inherit;font-weight:700}.genre-mix{flex:0 0 220px;color:var(--text);text-align:right;border-radius:14px;overflow:hidden;background:var(--card);padding-bottom:14px}.genre-mix-art{display:flex;height:150px;overflow:hidden}.genre-mix-art img{min-width:0;flex:1;object-fit:cover}.genre-mix strong,.genre-mix small{display:block;padding:8px 12px}.genre-mix small{color:var(--dim)}}';document.head.append(parityStyle);
 const buildGenreBeforeParity=buildMusicDomain;
 buildMusicDomain=async function(spec){const data=await buildGenreBeforeParity(spec);if(genreSpecSet.has(spec)){data.tracks=genrePlaybackUnique(data.tracks).map(t=>({...t,_domainScope:spec.name}));genreDataByName.set(spec.name,data);}return data;};
+// Mark only real genre pages, never ordinary albums or song drilldowns.
+const openGenreBeforeHero=openMusicDomain;
+openMusicDomain=function(spec){$('page-album').classList.toggle('genre-detail',genreSpecSet.has(spec));return openGenreBeforeHero(spec);};
+const albumBeforeGenreHero=openAlbum;
+openAlbum=function(...args){$('page-album').classList.remove('genre-detail');return albumBeforeGenreHero(...args);};
+const sectionBeforeGenreHero=sectionTracks;
+sectionTracks=function(...args){$('page-album').classList.remove('genre-detail');return sectionBeforeGenreHero(...args);};
