@@ -12,4 +12,4 @@ attachTrackSwipe=function(row,track){
  row.addEventListener('touchcancel',clear,{passive:true});row.addEventListener('click',e=>{if(e.target.closest('.blue-queue-indicator'))return;if(suppress||row.classList.contains('queue-reveal')){e.preventDefault();e.stopImmediatePropagation();clear();}},true);
  document.addEventListener('pointerdown',e=>{if(!row.contains(e.target))clear();},{passive:true});
 };
-const blueBadgeBefore=paintEngineBadge;paintEngineBadge=function(){blueBadgeBefore();if($('engineBadge'))$('engineBadge').innerHTML=$('engineBadge').innerHTML.replace(/v\d+/g,'v160');};if($('verChip')?.lastChild)$('verChip').lastChild.textContent='v160';paintEngineBadge();
+const blueBadgeBefore=paintEngineBadge;paintEngineBadge=function(){blueBadgeBefore();if($('engineBadge'))$('engineBadge').innerHTML=$('engineBadge').innerHTML.replace(/v\d+/g,'v161');};if($('verChip')?.lastChild)$('verChip').lastChild.textContent='v161';paintEngineBadge();
