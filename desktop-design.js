@@ -13,7 +13,7 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
  }}
  if(card){card.querySelector('img').referrerPolicy='no-referrer';}
 };
-// v158: physical left/right controls move cards in the same screen direction.
+// v164: swap physical carousel arrow actions, including their edge states.
 (function(){
  const before=sectionEl;
  sectionEl=function(...args){const result=before(...args);fix(result.sec);return result;};
@@ -24,15 +24,31 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
    originals.forEach((original,i)=>{
     if(original.dataset.directionFixed)return;
     const button=original.cloneNode(false),right=i===originals.length-1;
-    button.dataset.directionFixed='1';button.dataset.contentDirection=right?'right':'left';
+    button.dataset.directionFixed='1';button.dataset.contentDirection=right?'left':'right';
     button.style.direction='ltr';
     button.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(right?'M9 5l7 7-7 7':'M15 5l-7 7 7 7')+'" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    button.setAttribute('aria-label',(right?'הזז תוכן משמאל לימין':'הזז תוכן מימין לשמאל')+' - '+section.querySelector('.asec-title')?.textContent.replace('‹','').trim());
+    button.setAttribute('aria-label',(right?'הזז תוכן מימין לשמאל':'הזז תוכן משמאל לימין')+' - '+section.querySelector('.asec-title')?.textContent.replace('‹','').trim());
     button.addEventListener('click',()=>{
-     // A negative scroll delta moves actual cards right in both RTL and LTR.
-     body.scrollBy({left:(right?-1:1)*Math.max(250,body.clientWidth*.8),behavior:'smooth'});
+     // Reversed roles: right moves cards left, left moves cards right.
+     body.scrollBy({left:(right?1:-1)*Math.max(250,body.clientWidth*.8),behavior:'smooth'});
     });original.replaceWith(button);
    });
+   const buttons=[...section.querySelectorAll('.asec-arrow')];
+   function updateEdges(){
+    const viewport=body.getBoundingClientRect();
+    const cards=[...body.children].map(x=>x.getBoundingClientRect()).filter(r=>r.width>0);
+    const hiddenLeft=cards.some(r=>r.left<viewport.left-2);
+    const hiddenRight=cards.some(r=>r.right>viewport.right+2);
+    buttons.forEach(button=>{
+     const movesLeft=button.dataset.contentDirection==='left';
+     button.disabled=!(movesLeft?hiddenRight:hiddenLeft);
+     button.setAttribute('aria-disabled',String(button.disabled));
+    });
+   }
+   body.addEventListener('scroll',updateEdges,{passive:true});
+   new ResizeObserver(updateEdges).observe(body);
+   new MutationObserver(updateEdges).observe(body,{childList:true});
+   requestAnimationFrame(updateEdges);
   }
  }
  fix(document);
