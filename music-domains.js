@@ -10,8 +10,8 @@ const domainAlbumChoices={
 };
 const domainArtistCache=new Map;
 async function buildMusicDomain(spec){
- let tracks=spec.loadTracks?await spec.loadTracks():await buildHomeVibe(spec);if(spec.loadTracks&&!tracks.length){searchCache.clear();tracks=await spec.loadTracks();}if(!tracks.length&&!spec.loadTracks){spec.songs.forEach(([artist,title])=>searchCache.delete((artist+' '+title).trim().toLowerCase()));tracks=await buildHomeVibe(spec);}
- window.genreProgressHooks?.get(spec.name)?.(tracks);
+ const tracksPromise=(async()=>{let tracks=spec.loadTracks?await spec.loadTracks():await buildHomeVibe(spec);if(spec.loadTracks&&!tracks.length){searchCache.clear();tracks=await spec.loadTracks();}if(!tracks.length&&!spec.loadTracks){spec.songs.forEach(([artist,title])=>searchCache.delete((artist+' '+title).trim().toLowerCase()));tracks=await buildHomeVibe(spec);}
+ window.genreProgressHooks?.get(spec.name)?.(tracks);return tracks;})();
  const candidates=spec.artists||[...new Set((spec.songs||[]).map(x=>x[0]))].map(name=>({name}));
  const results=await Promise.allSettled(candidates.map(candidate=>{
  if(domainArtistCache.has(candidate.ch||candidate.name))return domainArtistCache.get(candidate.ch||candidate.name);
@@ -22,18 +22,18 @@ async function buildMusicDomain(spec){
   if(!id){const search=await within(pipedFetch('/search?q='+encodeURIComponent(name)+'&filter=music_artists'),12000);
    const match=(search.items||[]).find(c=>c.type==='channel'&&c.verified&&[name,aliases[name]].filter(Boolean).some(n=>artistKey(c.name)===artistKey(n)));
    id=match&&chFromUrl(match.url);avatar=match?.thumbnail||'';}
-  if(id&&!avatar){try{const profile=await within(pipedFetch('/channel/'+id),10000);if(chFromUrl(profile.url||('/channel/'+id))===id)avatar=profile.avatarUrl||'';}catch{}}
   if(!id)return null;
-  const artist={name,ch:id,avatar};
+  const artist={name,ch:id,avatar};window.genreSectionProgress?.(spec,{artist});
+  if(!avatar)within(pipedFetch('/channel/'+id),10000).then(profile=>{if(chFromUrl(profile.url||('/channel/'+id))===id){artist.avatar=profile.avatarUrl||'';window.genreSectionProgress?.(spec,{artist});}}).catch(()=>{});
   const catalog=await catalogForTaste(artist);const choices=domainAlbumChoices[name]||[];
   const eligible=catalog.filter(a=>(!candidate.releaseTitles||candidate.releaseTitles.some(t=>normTxt(t)===normTxt(a.title)))&&['album','short'].includes(releaseKind(a))&&!/(לילדים|שירי ילדים|children|kids|כפולה|remix|רמיקס)/i.test(a.title));
   if(spec.recent)eligible.sort((a,b)=>(a.recencyRank||9999)-(b.recencyRank||9999));
   const explicit=spec.recent?eligible.filter(a=>Number(a.releaseYear)>=new Date().getFullYear()-1).slice(0,2):eligible.filter(a=>choices.some(title=>normTxt(a.title)===normTxt(title)));
   const releases=(explicit.length?explicit:eligible.sort((a,b)=>(a.popularityRank||9999)-(b.popularityRank||9999))).slice(0,2);
-  return {artist,releases};
+  window.genreSectionProgress?.(spec,{artist,releases});return {artist,releases};
  })();domainArtistCache.set(candidate.ch||candidate.name,work);work.then(x=>{if(!x)domainArtistCache.delete(candidate.ch||candidate.name);}).catch(()=>domainArtistCache.delete(candidate.ch||candidate.name));return work;
  }));
- tracks=[...new Map(tracks.map(t=>[t.id,t])).values()];
+ let tracks=await tracksPromise;tracks=[...new Map(tracks.map(t=>[t.id,t])).values()];
  return {tracks,artists:results.flatMap(r=>r.status==='fulfilled'&&r.value?[r.value.artist]:[]),releases:results.flatMap(r=>r.status==='fulfilled'&&r.value?r.value.releases:[])};
 }
 async function openMusicDomain(spec){
