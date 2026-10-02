@@ -39,3 +39,7 @@
  #page-album.genre-detail .albumart{display:block;width:min(100% - 48px,880px);height:280px;object-fit:cover;border-radius:20px;margin:0 auto 26px;box-shadow:0 18px 36px rgba(0,0,0,.16);}
  #page-album.genre-detail .pttl,#page-album.genre-detail .psub,#page-album.genre-detail .pmeta{max-width:880px;margin-inline:auto;text-align:right;}
 }
+
+/* v164 carousel edges follow the swapped actions. */
+.asec-arrow:disabled{opacity:.32;cursor:default;box-shadow:none;}
+.asec-arrow:disabled:hover{background:var(--card);}
