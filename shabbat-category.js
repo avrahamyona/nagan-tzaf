@@ -14,7 +14,7 @@ buildMusicDomain=async function(spec){
 };
 const renderBeforeShabbat=renderCompleteGenre;
 renderCompleteGenre=function(spec,data){
- renderBeforeShabbat(spec,data);if(spec!==categoryDomains['מוזיקה עברית'])return;
+ renderBeforeShabbat(spec,data);if(spec!==categoryDomains['מוזיקה יהודית'])return;
  const section=[...$('alTracks').querySelectorAll('.asec')].find(s=>s.querySelector('.asec-title')?.textContent.includes('המלצות'));if(!section)return;
  const card=document.createElement('button');card.type='button';card.className='genre-mix shabbat-category-card';
  const art=document.createElement('div');art.className='genre-mix-art';shabbatTracks.slice(0,4).forEach(t=>{const img=document.createElement('img');img.src=sqThumb(t.id);img.alt='';art.append(img);});
