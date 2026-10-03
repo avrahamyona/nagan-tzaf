@@ -3,8 +3,8 @@ const directHealth=new Map,sourceHealthCache=new Map;
 let activeDirectAttempt=null,consecutiveUnavailable=0;
 function healthOf(id){const h=directHealth.get(id);return h&&Date.now()-h.at<300000?h:null;}
 function markDirectHealth(id,status,url=null){directHealth.set(id,{status,url,at:Date.now()});if(directHealth.size>150)directHealth.delete(directHealth.keys().next().value);}
-async function healthyDirectSource(id,excluded=new Set){
- const h=healthOf(id);if(h?.url&&!excluded.has(h.url)){try{return await directByteProbe(h.url,4000);}catch{markDirectHealth(id,'failed');}}
+async function healthyDirectSource(id,excluded=new Set,soft=false){
+ const h=healthOf(id);if(h?.url&&!excluded.has(h.url)){try{return await directByteProbe(h.url,4000);}catch{markDirectHealth(id,soft?'probe-failed':'failed');}}
  const jobs=PIPED_HOSTS.map(async base=>{
   const controller=new AbortController,timer=setTimeout(()=>controller.abort(),5000);
   try{const r=await fetch(base+'/streams/'+encodeURIComponent(id),{signal:controller.signal});if(!r.ok)throw Error('metadata');const rows=playableDirectCandidates(await r.json()).filter(x=>!excluded.has(x.url));
@@ -12,11 +12,11 @@ async function healthyDirectSource(id,excluded=new Set){
    throw Error('no healthy direct source');
   }finally{clearTimeout(timer);}
  });
- try{const url=await Promise.any(jobs);markDirectHealth(id,'bytes',url);return url;}catch{markDirectHealth(id,'failed');return null;}
+ try{const url=await Promise.any(jobs);markDirectHealth(id,'bytes',url);return url;}catch{markDirectHealth(id,soft?'probe-failed':'failed');return null;}
 }
 async function cachedHealthySource(id){
  const entry=sourceHealthCache.get(id);if(entry&&Date.now()-entry.at<180000)return entry.promise;
- const promise=healthyDirectSource(id);sourceHealthCache.set(id,{at:Date.now(),promise});
+ const promise=healthyDirectSource(id,new Set(),true);sourceHealthCache.set(id,{at:Date.now(),promise});
  if(sourceHealthCache.size>80)sourceHealthCache.delete(sourceHealthCache.keys().next().value);return promise;
 }
 async function otherSongRecordings(track){
@@ -83,6 +83,8 @@ buildRelatedAutoplay=async function(seed,existing){
  const tracks=await relatedBeforeHealth(seed,existing);
  const checks=await Promise.allSettled(tracks.slice(0,8).map(async t=>({track:t,url:await cachedHealthySource(t.id)})));
  const ready=checks.filter(r=>r.status==='fulfilled'&&r.value.url).map(r=>r.value.track);
- const unknown=tracks.filter(t=>!healthOf(t.id));
- return balancedAutoplay([...ready,...unknown],seed,existing);
+ const unknown=tracks.filter(t=>{const h=healthOf(t.id);return !h||h.status==='probe-failed';});
+ const preferred=balancedAutoplay([...ready,...unknown],seed,existing);
+ // Never empty when candidates exist: fall back to non-probed candidates.
+ return preferred.length?preferred:balancedAutoplay(tracks,seed,existing);
 };
