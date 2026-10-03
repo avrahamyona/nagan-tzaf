@@ -10,8 +10,12 @@ for(const name of ['sqCard','sqCapCard','wideCapCard']){
  const before=window[name];if(!before)continue;
  window[name]=function(t,tap,...args){return before(t,()=>{const old=singleSongGesture;singleSongGesture=true;try{return tap();}finally{singleSongGesture=old;}},...args);};
 }
+function autoplayArtistKey(name){return artistKey(String(name||'').replace(/\b(?:vevo|official|topic)\b/gi,'')).replace(/[^\p{L}\p{N}]/gu,'');}
+function autoplayArtistMatch(a,b){const x=autoplayArtistKey(a),y=autoplayArtistKey(b);return !!(x&&y&&(x===y||x.includes(y)||y.includes(x)));}
 function autoplayTitle(t){
- let title=canonicalSongTitle({...t,title:String(t.title||'').replace(/\[[^\]]*\]|\([^)]*\)/g,' ')});
+ let raw=String(t.title||'').replace(/\[[^\]]*\]|\([^)]*\)/g,' ');
+ if(t.artist){const dash=raw.match(/^\s*(.{2,50}?)\s*[-–|]\s+/);if(dash&&autoplayArtistMatch(dash[1],t.artist))raw=raw.slice(dash[0].length);}
+ let title=canonicalSongTitle({...t,title:raw});
  const names=[t.artist,...piyyutDomainArtists.map(a=>a.name),'תפארת הפיוט','יחזקאל ציון','Yehezkel Zion',...tasteArtists().map(a=>a.name)];
  for(const name of names){const n=normTxt(name).replace(/[^\p{L}\p{N}\s]/gu,'').trim();if(n)title=title.replace(n,' ');}
  return title.replace(/בלעדי לפורטל חזנות ופיוט|מוואל|בפקר/gi,' ').replace(/אל בעניי|אל בעני|אל בעוניי/g,'אל בעוני').replace(/\b(?:live|remix|cover|version|acoustic|instrumental|official|audio|video)\b|בהופעה חיה|הופעה חיה|ביצוע חי|גרסה|גירסה|רמיקס|קאבר|אקוסטי|מילים|קריוקי/gi,' ').replace(/\s+/g,' ').trim();
@@ -20,11 +24,11 @@ function autoplayAllowed(t){return !!t?.id&&!state.lessSuggestions?.[t.id]&&setS
 function autoplayProfile(seed){
  const specs=[...new Set([...Object.values(categoryDomains),...homeVibes])];
  const title=autoplayTitle(seed);
- const exact=specs.filter(s=>(s.songs||[]).some(([a,n])=>autoplayTitle({title:n,artist:a})===title&&normTxt(seed.title+' '+seed.artist).includes(normTxt(a))));
+ const exact=specs.filter(s=>(s.songs||[]).some(([a,n])=>autoplayTitle({title:n,artist:a})===title&&autoplayArtistMatch(a,seed.artist)));
  if(exact.length)return exact.slice(0,2);
  if(/משה חבושה|תפארת הפיוט|ציון יחזקאל|יחזקאל ציון|יחיאל נהרי|יובל טייב/.test(seed.artist+' '+seed.title))return [categoryDomains[arabicCategoryNames[0]]];
- const paired=specs.filter(s=>(s.songs||[]).some(([a])=>artistKey(a)===artistKey(seed.artist)));if(paired.length)return paired.slice(0,1);
- const known=specs.filter(s=>s.artists?.some(a=>a.ch&&a.ch===seed.ch||artistKey(a.name)===artistKey(seed.artist)));
+ const paired=specs.filter(s=>(s.songs||[]).some(([a])=>autoplayArtistMatch(a,seed.artist)));if(paired.length)return paired.slice(0,1);
+ const known=specs.filter(s=>s.artists?.some(a=>a.ch&&a.ch===seed.ch||autoplayArtistMatch(a.name,seed.artist)));
  return known.slice(0,1);
 }
 function balancedAutoplay(candidates,seed,existing=[]){
@@ -47,6 +51,9 @@ async function buildRelatedAutoplay(seed,existing){
  if(pool.length<12&&queries.length){const rows=await Promise.allSettled(queries.map(async a=>songDiscovery(await within(searchMusicCached(a.name),12000)).filter(t=>artistMatchesTaste(t,[a]))));pool.push(...rows.flatMap(r=>r.status==='fulfilled'?r.value:[]));}
  // For unknown styles use source related tracks only with related-artist evidence.
  if(!profiles.length&&neighbors.length){try{const j=await pipedFetch('/streams/'+seed.id,8000);pool.push(...(j.relatedStreams||[]).filter(s=>s.type==='stream').map(mapStream).filter(t=>artistMatchesTaste(t,queries)));}catch{}}
+ // Never return empty while the catalog has candidates: related streams of the seed, then other songs by the same artist. Taste and title-dedupe filters still apply downstream.
+ if(!pool.length){try{const j=await pipedFetch('/streams/'+seed.id,8000);pool.push(...(j.relatedStreams||[]).filter(s=>s.url&&s.type==='stream').map(mapStream).filter(t=>t.id&&t.id!==seed.id));}catch{}}
+ if(pool.length<6&&seed.artist){try{pool.push(...songDiscovery(await within(searchMusicCached(seed.artist),12000)).filter(t=>autoplayArtistMatch(t.artist,seed.artist)));}catch{}}
  return balancedAutoplay(pool,seed,existing);
 }
 const playBeforeSimilar=playQueue;
