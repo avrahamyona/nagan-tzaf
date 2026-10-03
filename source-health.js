@@ -1,5 +1,5 @@
 // v168: direct media only. Metadata races never wait for byte probes.
-const directHealth=new Map,sourceHealthCache=new Map,resolvedDirect=new Map,directDiscoveries=new Map;
+const directHealth=new Map,sourceHealthCache=new Map,resolvedDirect=new Map,directDiscoveries=new Map,directCandidatePools=new Map;
 let activeDirectAttempt=null,consecutiveUnavailable=0;
 function healthOf(id){const h=directHealth.get(id);return h&&Date.now()-h.at<90000?h:null;}
 function markDirectHealth(id,status,url=null){directHealth.set(id,{status,url,at:Date.now()});if(directHealth.size>100)directHealth.delete(directHealth.keys().next().value);}
@@ -8,11 +8,12 @@ function rememberDirect(id,url){if(!url)return;resolvedDirect.set(id,{url,at:Dat
 function cancelDirectDiscovery(id){const x=directDiscoveries.get(id);if(x){x.cancel();directDiscoveries.delete(id);}}
 function discoverDirect(id,excluded=new Set){
  const cached=cachedDirect(id,excluded);if(cached)return Promise.resolve(cached);
+ const pool=directCandidatePools.get(id);if(pool&&Date.now()-pool.at<90000){const candidate=pool.urls.find(u=>!excluded.has(u));if(candidate){rememberDirect(id,candidate);return Promise.resolve(candidate);}}
  const running=directDiscoveries.get(id);if(running&&!excluded.size)return running.promise;
  const controllers=[],job={cancel(){controllers.forEach(c=>c.abort());}};
  const jobs=PIPED_HOSTS.map(async base=>{
   const c=new AbortController;controllers.push(c);const timer=setTimeout(()=>c.abort(),2400);
-  try{const r=await fetch(base+'/streams/'+encodeURIComponent(id),{signal:c.signal});if(!r.ok)throw Error('metadata');const candidates=playableDirectCandidates(await r.json()).filter(x=>!excluded.has(x.url));if(!candidates.length)throw Error('no media');return candidates[0].url;}finally{clearTimeout(timer);}
+  try{const r=await fetch(base+'/streams/'+encodeURIComponent(id),{signal:c.signal});if(!r.ok)throw Error('metadata');const rows=playableDirectCandidates(await r.json());const old=directCandidatePools.get(id);directCandidatePools.set(id,{at:Date.now(),urls:[...new Set([...(old?.urls||[]),...rows.map(x=>x.url)])]});if(directCandidatePools.size>60)directCandidatePools.delete(directCandidatePools.keys().next().value);const candidates=rows.filter(x=>!excluded.has(x.url));if(!candidates.length)throw Error('no media');return candidates[0].url;}finally{clearTimeout(timer);}
  });
  job.promise=Promise.any(jobs).then(url=>{rememberDirect(id,url);return url;},()=>null).finally(()=>{job.cancel();if(directDiscoveries.get(id)===job)directDiscoveries.delete(id);});
  if(!excluded.size)directDiscoveries.set(id,job);return job.promise;
@@ -23,7 +24,7 @@ resolveAudioUrl=id=>{const h=healthOf(id);return h?.url?Promise.resolve(h.url):d
 async function healthyDirectSource(id,excluded=new Set,soft=false){return discoverDirect(id,excluded);}
 async function cachedHealthySource(id){return discoverDirect(id);}
 function sameSongRecording(seed,t){
- const title=autoplayTitle(seed),other=autoplayTitle(t);if(!title||!other||t.id===seed.id)return false;
+ const title=autoplayTitle(seed),other=autoplayTitle({...t,artist:seed.artist});if(!title||!other||t.id===seed.id)return false;
  const titleMatch=title===other||other.length>title.length&&other.includes(title)&&other.length<title.length+40;
  const artist=autoplayArtistKey(seed.artist).replace(/הערוץהרשמי|officialchannel/g,'');
  const credited=autoplayArtistMatch(seed.artist,t.artist)||!!artist&&autoplayArtistKey(t.title).includes(artist)||!!seed.ch&&seed.ch===t.ch;
@@ -68,7 +69,7 @@ async function recoverHealthyPlayback(a){
   }
   if(!a.versions)a.versions=await (a.versionWork||otherSongRecordings(a.track));
   while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a)||a.skipping||userPaused)return;const url=await discoverDirect(version.id,a.urls);if(!currentAttempt(a)||a.skipping||userPaused)return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה אחרת של אותו שיר ואמן.');return;}}
-  if((a.sourceAttempts||0)<3){a.recovering=false;recoverHealthyPlayback(a);return;}
+  if((a.sourceAttempts||0)<3){a.recovering=false;setTimeout(()=>recoverHealthyPlayback(a),300);return;}
   a.recovering=false;await skipUnavailableAttempt(a);
  }finally{a.recovering=false;}
 }
