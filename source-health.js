@@ -22,10 +22,20 @@ alternateDirectUrl=id=>discoverDirect(id);
 resolveAudioUrl=id=>{const h=healthOf(id);return h?.url?Promise.resolve(h.url):discoverDirect(id);};
 async function healthyDirectSource(id,excluded=new Set,soft=false){return discoverDirect(id,excluded);}
 async function cachedHealthySource(id){return discoverDirect(id);}
+function sameSongRecording(seed,t){
+ const title=autoplayTitle(seed),other=autoplayTitle(t);if(!title||!other||t.id===seed.id)return false;
+ const titleMatch=title===other||other.length>title.length&&other.includes(title)&&other.length<title.length+40;
+ const artist=autoplayArtistKey(seed.artist).replace(/הערוץהרשמי|officialchannel/g,'');
+ const credited=autoplayArtistMatch(seed.artist,t.artist)||!!artist&&autoplayArtistKey(t.title).includes(artist)||!!seed.ch&&seed.ch===t.ch;
+ return titleMatch&&credited&&!/(karaoke|instrumental|קריוקי|ללא מילים|מחרוזת|full album)/i.test(t.title);
+}
 async function otherSongRecordings(track){
  const title=autoplayTitle(track);if(!title||!track.artist)return [];
- try{const tracks=await within(searchMusicCached(track.artist+' '+title),4000);return tracks.filter(t=>t.id!==track.id&&autoplayTitle(t)===title&&autoplayAllowed(t)&&(songArtistIdentity(t)===songArtistIdentity(track)||t.ch&&t.ch===track.ch||artistKey(t.artist)===artistKey(track.artist))).sort((a,b)=>Number(a.official||a.musicCatalog)-Number(b.official||b.musicCatalog)).reverse().slice(0,2);}catch{return [];}
+ const artist=String(track.artist).replace(/הערוץ הרשמי|official channel| - topic/gi,'').trim();
+ const results=await Promise.allSettled([artist+' '+title,artist+' '+title+' מילים'].map(q=>within(searchMusicCached(q),5000)));
+ const seen=new Set;return results.flatMap(r=>r.status==='fulfilled'?r.value:[]).filter(t=>sameSongRecording(track,t)&&!seen.has(t.id)&&seen.add(t.id)).sort((a,b)=>Number(b.official||b.musicCatalog)-Number(a.official||a.musicCatalog)).slice(0,6);
 }
+function searchingRecording(show){let el=$('directSearchStatus');if(!el){el=document.createElement('div');el.id='directSearchStatus';el.setAttribute('role','status');el.style.cssText='position:fixed;bottom:150px;left:50%;transform:translateX(-50%);z-index:150;background:#333;color:white;padding:9px 16px;border-radius:18px;font-size:13px;white-space:nowrap;pointer-events:none';document.body.appendChild(el);}el.textContent='מחפש הקלטה אחרת';el.hidden=!show;}
 function currentAttempt(a){return activeDirectAttempt===a&&a.generation===playGen&&current()?.id===a.track.id&&!videoMode;}
 function stopFastDeadline(a){clearTimeout(a?.deadline);clearTimeout(a?.versionTimer);}
 function stopAttemptTimer(a){clearTimeout(a?.timer);clearTimeout(directLoadTimeout);}
@@ -38,23 +48,27 @@ function startHealthySource(a,url,mediaId=a.track.id){
  else{stopAttemptTimer(a);streamConnecting=false;syncPlayUI(true);}
 }
 async function skipUnavailableAttempt(a){
- if(!currentAttempt(a)||a.skipping)return;a.skipping=true;stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);markDirectHealth(a.track.id,'failed');resolvedDirect.delete(a.track.id);
- if(userPaused||a.options.autoplay===false||a.options.startAt>0){directUnavailableBeforeHealth();return;}
- consecutiveUnavailable++;if(consecutiveUnavailable>8){directUnavailableBeforeHealth();toast('אין כרגע מקור ישיר זמין בתור. הניגון נעצר.');return;}
- if(!state.priorityQueue?.length&&state.qi>=state.queue.length-1&&state.singleAutoplay&&state.autoNext)try{await within(ensureUpNext(),1800);}catch{}
- if(!currentAttempt(a)||userPaused)return;
- let next=null;if(state.priorityQueue?.length){state.priorityCurrent=state.priorityQueue.shift();next=state.priorityCurrent;}else if(state.qi+1<state.queue.length){state.priorityCurrent=null;state.qi++;next=current();}
- if(!next){directUnavailableBeforeHealth();toast('אין כרגע שיר זמין נוסף בתור.');return;}
- toast('ההקלטה לא זמינה כרגע. עובר לשיר הבא.');pushHistory(next);loadTrack(next);paintNow();save();if($('queueSheet').classList.contains('open'))renderQueue();
+ // Historical name retained for callers. Never skip the chosen song.
+ if(!currentAttempt(a)||a.skipping)return;a.skipping=true;stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);markDirectHealth(a.track.id,'failed');resolvedDirect.delete(a.track.id);searchingRecording(false);directUnavailableBeforeHealth();toast('השיר הזה אינו זמין כרגע במקורות הישירים. לא עברנו לשיר אחר.');
 }
 async function recoverHealthyPlayback(a){
  if(!currentAttempt(a)||a.skipping||a.recovering||a.options.autoplay!==false&&userPaused)return;
- a.recovering=true;stopAttemptTimer(a);streamConnecting=true;const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
+ a.recovering=true;stopAttemptTimer(a);streamConnecting=true;searchingRecording(true);
+ const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
  if([...a.urls].some(u=>u.startsWith(STREAM_API)))primaryUnavailableUntil=Date.now()+60000;
  try{
-  if((a.sourceAttempts||0)<2){a.sourceAttempts=(a.sourceAttempts||0)+1;let url=await (a.discovery||discoverDirect(a.track.id,a.urls));a.discovery=null;if(url&&a.urls.has(url))url=await discoverDirect(a.track.id,a.urls);if(!currentAttempt(a))return;if(url&&!a.urls.has(url)){a.recovering=false;startHealthySource(a,url);return;}}
+  if((a.sourceAttempts||0)<3){
+   a.sourceAttempts=(a.sourceAttempts||0)+1;
+   if(a.sourceAttempts>1)await new Promise(r=>setTimeout(r,300*a.sourceAttempts));
+   if(!currentAttempt(a)||a.skipping||userPaused)return;
+   let url=await (a.discovery||discoverDirect(a.track.id,a.urls));a.discovery=null;
+   if(url&&a.urls.has(url))url=await discoverDirect(a.track.id,a.urls);
+   if(!currentAttempt(a)||a.skipping||userPaused)return;
+   if(url&&!a.urls.has(url)){a.recovering=false;startHealthySource(a,url);return;}
+  }
   if(!a.versions)a.versions=await (a.versionWork||otherSongRecordings(a.track));
-  while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a))return;const url=await discoverDirect(version.id,a.urls);if(!currentAttempt(a))return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה חלופית של אותו שיר ואמן.');return;}}
+  while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a)||a.skipping||userPaused)return;const url=await discoverDirect(version.id,a.urls);if(!currentAttempt(a)||a.skipping||userPaused)return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה אחרת של אותו שיר ואמן.');return;}}
+  if((a.sourceAttempts||0)<3){a.recovering=false;recoverHealthyPlayback(a);return;}
   a.recovering=false;await skipUnavailableAttempt(a);
  }finally{a.recovering=false;}
 }
@@ -68,13 +82,11 @@ loadTrack=function(track,options={}){
  clearTimeout(ytRetryTimer);pendingLoad=null;pendingSeek.delete(audioEl);audioEl.pause();audioEl.removeAttribute('src');audioEl.load();
  const opts={autoplay:true,...options};playGen++;lastCur=-1;streamConnecting=true;engine='audio';userPaused=opts.autoplay===false;
  const a={track,options:opts,generation:playGen,urls:new Set,versions:null,sourcesTried:false,recovering:false,startedAt:performance.now()};activeDirectAttempt=a;audioEl.dataset.vid=track.id;paintEngineBadge();
+ searchingRecording(false);
  if(opts.autoplay!==false){
-  // One overall startup budget. Retries cannot keep extending it.
-  a.deadline=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&!a.played)skipUnavailableAttempt(a);},3000);
-  a.versionTimer=setTimeout(()=>{if(!currentAttempt(a)||userPaused||a.played)return;
-   a.versionWork=otherSongRecordings(track).then(versions=>{if(!currentAttempt(a)||a.skipping||a.played)return [];a.versions=versions;versions.slice(0,2).forEach(v=>prefetchFastDirect(v.id));return versions;});
-   a.versionWork.then(async versions=>{for(const v of versions){if(!currentAttempt(a)||a.skipping||a.played)return;const u=cachedDirect(v.id)||await discoverDirect(v.id);if(!currentAttempt(a)||a.skipping||a.played)return;if(u){a.alternate=v;startHealthySource(a,u,v.id);toast('המקור מתעכב. מנגן הקלטה אחרת של אותו שיר.');return;}}});
-  },700);
+  // Bounded exhaustive same-song recovery, never an unrelated-song swap.
+  a.deadline=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&!a.played)skipUnavailableAttempt(a);},24000);
+  a.versionTimer=setTimeout(()=>{if(!currentAttempt(a)||userPaused||a.played)return;searchingRecording(true);a.versionWork=otherSongRecordings(track).then(versions=>{if(!currentAttempt(a)||a.skipping||a.played)return [];a.versions=versions;versions.slice(0,2).forEach(v=>prefetchFastDirect(v.id));return versions;});},700);
  }
  const url=cachedDirect(track.id)||healthOf(track.id)?.url;
  if(url){startHealthySource(a,url,healthOf(track.id)?.mediaId||track.id);return;}
@@ -87,7 +99,7 @@ loadTrack=function(track,options={}){
   a.sourcesTried=true;a.discovery=null;startHealthySource(a,u);
  });}else recoverHealthyPlayback(a);
 };
-audioEl.addEventListener('playing',()=>{const a=activeDirectAttempt;if(!a||!currentAttempt(a))return;a.played=true;stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);a.discovery=null;consecutiveUnavailable=0;markDirectHealth(a.mediaId||a.track.id,'decoded',audioEl.currentSrc);rememberDirect(a.mediaId||a.track.id,audioEl.currentSrc);window._directStartMs=Math.round(performance.now()-a.startedAt);if(a.alternate){markDirectHealth(a.track.id,'alternate',audioEl.currentSrc);directHealth.get(a.track.id).mediaId=a.mediaId;}});
+audioEl.addEventListener('playing',()=>{const a=activeDirectAttempt;if(!a||!currentAttempt(a))return;a.played=true;searchingRecording(false);stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);a.discovery=null;consecutiveUnavailable=0;markDirectHealth(a.mediaId||a.track.id,'decoded',audioEl.currentSrc);rememberDirect(a.mediaId||a.track.id,audioEl.currentSrc);window._directStartMs=Math.round(performance.now()-a.startedAt);if(a.alternate){markDirectHealth(a.track.id,'alternate',audioEl.currentSrc);directHealth.get(a.track.id).mediaId=a.mediaId;}});
 audioEl.addEventListener('waiting',()=>{const a=activeDirectAttempt;if(a&&currentAttempt(a)&&!userPaused){const at=audioEl.currentTime;stopAttemptTimer(a);a.timer=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&audioEl.currentTime<=at+.25)recoverHealthyPlayback(a);},at>0?5000:2400);}});
 // Prefetch URLs only: two upcoming songs and the first two visible search rows.
 function prefetchFastDirect(id){if(id&&id!==current()?.id&&!cachedDirect(id))discoverDirect(id);}
