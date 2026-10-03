@@ -48,10 +48,10 @@ async function skipUnavailableAttempt(a){
 }
 async function recoverHealthyPlayback(a){
  if(!currentAttempt(a)||a.recovering||a.options.autoplay!==false&&userPaused)return;
- a.recovering=true;stopAttemptTimer(a);streamConnecting=true;
+ a.recovering=true;stopAttemptTimer(a);streamConnecting=true;const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
  if([...a.urls].some(u=>u.startsWith(STREAM_API)))primaryUnavailableUntil=Date.now()+60000;
  try{
-  if((a.sourceAttempts||0)<2){a.sourceAttempts=(a.sourceAttempts||0)+1;const url=await (a.discovery||discoverDirect(a.track.id,a.urls));a.discovery=null;if(!currentAttempt(a))return;if(url&&!a.urls.has(url)){a.recovering=false;startHealthySource(a,url);return;}}
+  if((a.sourceAttempts||0)<2){a.sourceAttempts=(a.sourceAttempts||0)+1;let url=await (a.discovery||discoverDirect(a.track.id,a.urls));a.discovery=null;if(url&&a.urls.has(url))url=await discoverDirect(a.track.id,a.urls);if(!currentAttempt(a))return;if(url&&!a.urls.has(url)){a.recovering=false;startHealthySource(a,url);return;}}
   if(!a.versions)a.versions=await otherSongRecordings(a.track);
   while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a))return;const url=await discoverDirect(version.id,a.urls);if(!currentAttempt(a))return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה חלופית של אותו שיר ואמן.');return;}}
   a.recovering=false;await skipUnavailableAttempt(a);
