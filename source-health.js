@@ -46,7 +46,7 @@ function startHealthySource(a,url,mediaId=a.track.id){
  if(!currentAttempt(a)||a.skipping||(a.options.autoplay!==false&&userPaused))return;if(!url)return;
  audioEl.pause();a.urls.add(url);a.mediaId=mediaId;window._streamDiag=mediaId===a.track.id?'direct-fast-source':'direct-alternate-recording';
  audioEl.dataset.vid=a.track.id;setAudioSrc(url);seekWhenReady(audioEl,mediaId===a.track.id?a.options.startAt:0);armAttempt(a);
- if(a.options.autoplay!==false){userPaused=false;audioEl.play().catch(e=>{if(!currentAttempt(a))return;if(noteAutoplayBlock(e)){stopAttemptTimer(a);streamConnecting=false;syncPlayUI(true);}else recoverHealthyPlayback(a);});}
+ if(a.options.autoplay!==false){userPaused=false;audioEl.play().catch(e=>{if(!currentAttempt(a)||e.name==='AbortError'||a.played&&audioEl.readyState>=3&&!audioEl.paused)return;if(noteAutoplayBlock(e)){stopAttemptTimer(a);streamConnecting=false;syncPlayUI(true);}else recoverHealthyPlayback(a);});}
  else{stopAttemptTimer(a);streamConnecting=false;syncPlayUI(true);}
 }
 async function skipUnavailableAttempt(a){
@@ -54,7 +54,7 @@ async function skipUnavailableAttempt(a){
  if(!currentAttempt(a)||a.skipping)return;a.skipping=true;stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);markDirectHealth(a.track.id,'failed');resolvedDirect.delete(a.track.id);searchingRecording(false);directUnavailableBeforeHealth();toast('השיר הזה אינו זמין כרגע במקורות הישירים. לא עברנו לשיר אחר.');
 }
 async function recoverHealthyPlayback(a){
- if(!currentAttempt(a)||a.skipping||a.recovering||a.options.autoplay!==false&&userPaused)return;
+ if(!currentAttempt(a)||a.skipping||a.recovering||a.options.autoplay!==false&&userPaused||a.played&&!audioEl.paused&&audioEl.readyState>=3)return;
  a.recovering=true;stopAttemptTimer(a);
  // Retry an edge/transient transport once for this same media ID, never another song.
  const media=a.mediaId||a.track.id;
