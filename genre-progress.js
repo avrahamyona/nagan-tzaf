@@ -94,3 +94,4 @@ function replaceLegacyMoodShelf(){
 }
 const listenBeforeMoodDiversity=renderListen;renderListen=async function(){await listenBeforeMoodDiversity();replaceLegacyMoodShelf();};replaceLegacyMoodShelf();
 const moodPageStyle=document.createElement('style');moodPageStyle.textContent='@media(max-width:819px){#page-album.mood-song-page.on{position:absolute;inset:0;width:auto;height:auto;transform:none;border-radius:0}#page-album.mood-song-page .albumhead{padding-top:72px}#page-album.mood-song-page .albumart{width:180px;height:180px}#page-album.mood-song-page .ascroll{inset:0;padding-bottom:160px}}';document.head.append(moodPageStyle);
+const albumBeforeMoodPage=openAlbum;openAlbum=function(...args){$('page-album').classList.remove('mood-song-page');return albumBeforeMoodPage(...args);};
