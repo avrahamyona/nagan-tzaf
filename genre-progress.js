@@ -277,11 +277,11 @@ homeMoodSpec=function(spec){return homeMoodSpecBefore173(spec)||[...homeVibes,..
 addHomeVibes=function(){const box=$('listenBody');box.querySelector('#homeVibeShelf')?.remove();const{sec,body}=sectionEl('אווירה ומצב רוח','hscroll heroes');sec.id='homeVibeShelf';sec.classList.add('home-featured');homeVibes.forEach((spec,i)=>body.append(themedMoodCard(spec,i,'editorial')));const anchor=[...box.children].find(x=>x.querySelector('.asec-title')?.textContent.includes('הושמעו לאחרונה'));if(anchor)anchor.after(sec);else box.prepend(sec);};
 replaceLegacyMoodShelf=function(){const box=$('listenBody');for(const section of [...box.children])if(section.querySelector('.asec-title')?.textContent.includes('שירים לפי מצב רוח'))section.remove();const{sec,body}=sectionEl('שירים לפי מצב רוח','hscroll heroes');sec.id='diverseLegacyMoods';sec.classList.add('home-featured');[...legacyMoodSpecs,...homeVibes.filter(s=>s._moodSource)].forEach((spec,i)=>body.append(themedMoodCard(spec,i)));box.append(sec);};
 const renderMoodBeforeThemes=renderMoodSongPage;
-renderMoodSongPage=function(spec,tracks,done){renderMoodBeforeThemes(spec,tracks,done);const art=moodArtwork(spec);$('alArt').src=art;$('alArt').alt=spec.name;$('alArt').onerror=null;$('page-album').style.setProperty('--album-cover','none');for(const img of $('alTracks').querySelectorAll('img')){img.src=art;img.onerror=null;img.alt='';}};
+renderMoodSongPage=function(spec,tracks,done){renderMoodBeforeThemes(spec,tracks,done);const art=moodArtwork(spec);$('alArt').src=art;$('alArt').alt=spec.name;$('alArt').onerror=null;$('page-album').style.setProperty('--album-cover','none');};
 const themeStyle=document.createElement('style');themeStyle.textContent='#homeVibeShelf .themed-mood-card,#diverseLegacyMoods .themed-mood-card{height:300px}#homeVibeShelf .themed-mood-card>img,#diverseLegacyMoods .themed-mood-card>img{object-fit:cover;opacity:1}#page-album.mood-song-page .albumhead::before{display:none}.themed-mood-card .hero-title{font-size:24px}#homeVibeShelf .editorial-mood-card{background:#f6f1e8;color:#273443}#homeVibeShelf .editorial-mood-card .hc-bg{display:none}#homeVibeShelf .editorial-mood-card .hc-scrim{background:linear-gradient(transparent 50%,#f6f1e8 88%)}#homeVibeShelf .editorial-mood-card .hc-title{color:#273443;text-shadow:none}#homeVibeShelf .editorial-mood-card .hc-kicker,#homeVibeShelf .editorial-mood-card .hc-desc{color:#586272}';document.head.append(themeStyle);addHomeVibes();replaceLegacyMoodShelf();
 
 // The content release owns its badge. Old cached gesture scripts cannot label new content.
-const CONTENT_RELEASE='v174';
+const CONTENT_RELEASE='v175';
 function syncContentRelease(){
  for(const id of ['engineBadge','verChip']){
   const el=$(id);if(!el)continue;
