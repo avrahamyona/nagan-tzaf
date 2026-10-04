@@ -279,3 +279,23 @@ replaceLegacyMoodShelf=function(){const box=$('listenBody');for(const section of
 const renderMoodBeforeThemes=renderMoodSongPage;
 renderMoodSongPage=function(spec,tracks,done){renderMoodBeforeThemes(spec,tracks,done);const art=moodArtwork(spec);$('alArt').src=art;$('alArt').alt=spec.name;$('alArt').onerror=null;$('page-album').style.setProperty('--album-cover','none');for(const img of $('alTracks').querySelectorAll('img')){img.src=art;img.onerror=null;img.alt='';}};
 const themeStyle=document.createElement('style');themeStyle.textContent='#homeVibeShelf .themed-mood-card,#diverseLegacyMoods .themed-mood-card{height:300px}#homeVibeShelf .themed-mood-card>img,#diverseLegacyMoods .themed-mood-card>img{object-fit:cover;opacity:1}#page-album.mood-song-page .albumhead::before{display:none}.themed-mood-card .hero-title{font-size:24px}#homeVibeShelf .editorial-mood-card{background:#f6f1e8;color:#273443}#homeVibeShelf .editorial-mood-card .hc-bg{display:none}#homeVibeShelf .editorial-mood-card .hc-scrim{background:linear-gradient(transparent 50%,#f6f1e8 88%)}#homeVibeShelf .editorial-mood-card .hc-title{color:#273443;text-shadow:none}#homeVibeShelf .editorial-mood-card .hc-kicker,#homeVibeShelf .editorial-mood-card .hc-desc{color:#586272}';document.head.append(themeStyle);addHomeVibes();replaceLegacyMoodShelf();
+
+// The content release owns its badge. Old cached gesture scripts cannot label new content.
+const CONTENT_RELEASE='v174';
+function syncContentRelease(){
+ for(const id of ['engineBadge','verChip']){
+  const el=$(id);if(!el)continue;
+  for(const node of el.childNodes)if(node.nodeType===Node.TEXT_NODE)node.textContent=node.textContent.replace(/v\d+/g,CONTENT_RELEASE);
+  el.dataset.contentRelease=CONTENT_RELEASE;
+ }
+ document.documentElement.dataset.contentRelease=CONTENT_RELEASE;
+}
+const paintBadgeBeforeContentRelease=paintEngineBadge;
+paintEngineBadge=function(){paintBadgeBeforeContentRelease();syncContentRelease();};
+syncContentRelease();paintEngineBadge();
+// Restore the loaded content's label after old UI routines and back/forward restoration.
+for(const id of ['engineBadge','verChip'])if($(id))new MutationObserver(()=>{
+ const el=$(id);if([...el.childNodes].some(n=>n.nodeType===Node.TEXT_NODE&&/v\d+/.test(n.textContent)&&!n.textContent.includes(CONTENT_RELEASE)))syncContentRelease();
+}).observe($(id),{childList:true,characterData:true,subtree:true});
+window.addEventListener('pageshow',syncContentRelease);
+if('serviceWorker' in navigator)navigator.serviceWorker.ready.then(reg=>reg.update()).catch(()=>{});
