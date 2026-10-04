@@ -130,7 +130,7 @@ function moodSearchEligible(t,spec){
  return true;
 }
 function newMoodCursor(spec){
- const broad=moodPageQueries[moodBase(spec)]||[];const artists=moodBase(spec)==='שבת'?shabbatArtists.map(a=>a.name):[...new Set((moodSongChoices[moodBase(spec)]||[]).map(x=>x[0]))];const queries=[...broad,...artists.map(name=>name+' '+(broad[0]||spec.name))];
+ const broad=moodPageQueries[moodBase(spec)]||[];const artists=moodBase(spec)==='שבת'?shabbatArtists.map(a=>a.name):[...new Set((moodSongChoices[moodBase(spec)]||[]).map(x=>x[0]))];const queries=[...broad,...artists.map(name=>name+' '+(broad[0]||spec.name)),...(moodBase(spec)==='שבת'?artists.flatMap(name=>[name+' לכה דודי',name+' שלום עליכם',name+' כי אשמרה שבת',name+' יה ריבון']):[])];
  return {spec,tracks:[],pool:[],seen:new Set,cursors:queries.map(q=>({q,next:null,started:false,done:false})),busy:false,done:false};
 }
 async function nextMoodPage(cursor){
@@ -180,6 +180,6 @@ openMusicDomain=async function(spec){
 const advanceBeforeMoodPaging=advance;
 advance=async function(direction,automatic){
  const cur=current(),cursor=cur?._domainScope?[...moodPaging.values()].find(c=>c.spec.name===cur._domainScope||moodBase(c.spec)===moodBase([...homeVibes,...legacyMoodSpecs].find(s=>s.name===cur._domainScope)||{})):null;
- if(direction>0&&cursor&&state.qi>=state.queue.length-3&&!cursor.done&&!cursor.busy){const page=await nextMoodPage(cursor);if(current()!==cur)return;if(page.length){const ids=new Set(state.queue.map(t=>t.id));state.queue.push(...page.filter(t=>!ids.has(t.id)).map(t=>({...t,_domainScope:cur._domainScope})));save();}}
+ if(direction>0&&cursor&&state.qi>=state.queue.length-3&&!cursor.done&&!cursor.busy){const loading=nextMoodPage(cursor);if(state.qi<state.queue.length-1){loading.then(page=>{if(!state.queue.some(t=>t._domainScope===cur._domainScope))return;const ids=new Set(state.queue.map(t=>t.id));state.queue.push(...page.filter(t=>!ids.has(t.id)).map(t=>({...t,_domainScope:cur._domainScope})));save();});return advanceBeforeMoodPaging(direction,automatic);}const page=await loading;if(current()!==cur)return;if(page.length){const ids=new Set(state.queue.map(t=>t.id));state.queue.push(...page.filter(t=>!ids.has(t.id)).map(t=>({...t,_domainScope:cur._domainScope})));save();}}
  return advanceBeforeMoodPaging(direction,automatic);
 };
