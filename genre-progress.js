@@ -84,8 +84,8 @@ function renderMoodSongPage(spec,tracks,done){
 }
 const openBeforeMoodDiversity=openMusicDomain;
 openMusicDomain=async function(spec){
- if(!homeMoodSpec(spec))return openBeforeMoodDiversity(spec);
- const seq=++alSeq;alCur=null;alTracks=[];document.querySelectorAll('.genre-start').forEach(x=>x.remove());$('page-album').classList.remove('genre-detail','release-list','phone-genre','from-artist');$('alTitle').textContent=spec.name;$('alArtist').textContent=spec.desc;$('alArtist').classList.remove('link');$('alArt').src='';$('alPlay').style.display='none';$('alShuffle').style.display='none';openPage('page-album');renderMoodSongPage(spec,[],false);
+ if(!homeMoodSpec(spec)){$('page-album').classList.remove('mood-song-page');return openBeforeMoodDiversity(spec);}
+ const seq=++alSeq;alCur=null;alTracks=[];document.querySelectorAll('.genre-start').forEach(x=>x.remove());$('page-album').classList.remove('genre-detail','release-list','phone-genre','from-artist');$('alTitle').textContent=spec.name;$('alArtist').textContent=spec.desc;$('alArtist').classList.remove('link');$('alArt').src='';$('alPlay').style.display='none';$('alShuffle').style.display='none';$('page-album').classList.add('mood-song-page');openPage('page-album');renderMoodSongPage(spec,[],false);
  const tracks=await loadMoodSongs(spec,ready=>{if(seq===alSeq)renderMoodSongPage(spec,ready,false);});if(seq!==alSeq)return;alTracks=tracks;renderMoodSongPage(spec,tracks,true);window._lastMoodResult={name:spec.name,tracks};
 };
 function replaceLegacyMoodShelf(){
@@ -93,3 +93,4 @@ function replaceLegacyMoodShelf(){
  if(box.querySelector('#diverseLegacyMoods'))return;const{sec,body}=sectionEl('שירים לפי מצב רוח','hscroll heroes');sec.id='diverseLegacyMoods';sec.classList.add('home-featured');for(const[i,spec]of legacyMoodSpecs.entries())body.append(heroCard({title:spec.name,kicker:'מיקס של כמה אמנים',desc:spec.desc,grad:GRADS[i],img:'',tap:()=>openMusicDomain(spec)}));box.append(sec);
 }
 const listenBeforeMoodDiversity=renderListen;renderListen=async function(){await listenBeforeMoodDiversity();replaceLegacyMoodShelf();};replaceLegacyMoodShelf();
+const moodPageStyle=document.createElement('style');moodPageStyle.textContent='@media(max-width:819px){#page-album.mood-song-page.on{position:absolute;inset:0;width:auto;height:auto;transform:none;border-radius:0}#page-album.mood-song-page .albumhead{padding-top:72px}#page-album.mood-song-page .albumart{width:180px;height:180px}#page-album.mood-song-page .ascroll{inset:0;padding-bottom:160px}}';document.head.append(moodPageStyle);
