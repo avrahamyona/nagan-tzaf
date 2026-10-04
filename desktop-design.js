@@ -1,7 +1,7 @@
 const desktopBackdrop=document.createElement('div');desktopBackdrop.id='desktopPlayerBackdrop';desktopBackdrop.className='hidden';desktopBackdrop.setAttribute('aria-hidden','true');document.body.appendChild(desktopBackdrop);
 function syncDesktopBackdrop(){desktopBackdrop.classList.toggle('hidden',$('player').classList.contains('hidden'));}
 new MutationObserver(syncDesktopBackdrop).observe($('player'),{attributes:true,attributeFilter:['class']});syncDesktopBackdrop();
-// Backdrop is visual only, consistent with mood/genre sheets. Close via pDown.
+desktopBackdrop.addEventListener('click',()=>{$('pDown').click();});
 
 const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,albums,videos,playlists=[]){
  desktopArtistRenderer(songs,albums,videos,playlists);
@@ -76,6 +76,23 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
  const player=$('player');
  player.addEventListener('pointerdown',e=>{
   if(e.target.closest('button,input,a,video,.volrow,#ytwrap,.pmeta2'))return;
-  e.stopImmediatePropagation();
+  if(innerWidth>=820||!e.target.closest('.player-topbar,.pgrab'))e.stopImmediatePropagation();
+ },true);
+})();
+
+// v179: an outside tap closes only the topmost visible overlay and is consumed.
+// Never trigger a link/button behind a dismissed overlay with the same tap.
+(function(){
+ function topOverlay(){
+  const overlays=[...document.querySelectorAll('.sheetbox.open,.page.on,#player:not(.hidden),#lyrView.open')];
+  return overlays.filter(el=>el.getBoundingClientRect().width>0).sort((a,b)=>Number(getComputedStyle(a).zIndex||0)-Number(getComputedStyle(b).zIndex||0)).at(-1);
+ }
+ document.addEventListener('click',e=>{
+  const top=topOverlay();if(!top||top.contains(e.target))return;
+  e.preventDefault();e.stopImmediatePropagation();
+  if(top.id==='player')closePlayer();
+  else if(top.id==='lyrView')closeLyrics();
+  else if(top.classList.contains('sheetbox'))closeSheet(top.id);
+  else closePage(top.id);
  },true);
 })();
