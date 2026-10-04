@@ -1,4 +1,4 @@
-// v168: direct media only. Metadata races never wait for byte probes.
+// v169: direct media only. Metadata races never wait for byte probes.
 const directHealth=new Map,sourceHealthCache=new Map,resolvedDirect=new Map,directDiscoveries=new Map,directCandidatePools=new Map;
 let activeDirectAttempt=null,consecutiveUnavailable=0;
 function healthOf(id){const h=directHealth.get(id);return h&&Date.now()-h.at<90000?h:null;}
@@ -54,9 +54,9 @@ async function skipUnavailableAttempt(a){
 }
 async function recoverHealthyPlayback(a){
  if(!currentAttempt(a)||a.skipping||a.recovering||a.options.autoplay!==false&&userPaused)return;
- a.recovering=true;stopAttemptTimer(a);streamConnecting=true;searchingRecording(true);
+ a.recovering=true;stopAttemptTimer(a);streamConnecting=true;a.options.startAt=Math.max(a.options.startAt||0,audioEl.currentTime||0);searchingRecording(true);
  const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
- if([...a.urls].some(u=>u.startsWith(STREAM_API)))primaryUnavailableUntil=Date.now()+60000;
+ // A failed recording never blacklists the primary for unrelated songs.
  try{
   if((a.sourceAttempts||0)<3){
    a.sourceAttempts=(a.sourceAttempts||0)+1;
@@ -68,7 +68,7 @@ async function recoverHealthyPlayback(a){
    if(url&&!a.urls.has(url)){a.recovering=false;startHealthySource(a,url);return;}
   }
   if(!a.versions)a.versions=await (a.versionWork||otherSongRecordings(a.track));
-  while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a)||a.skipping||userPaused)return;const url=await discoverDirect(version.id,a.urls);if(!currentAttempt(a)||a.skipping||userPaused)return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה אחרת של אותו שיר ואמן.');return;}}
+  while(a.versions.length){const version=a.versions.shift();if(!currentAttempt(a)||a.skipping||userPaused)return;const url=fastDirectUrl(version.id)||await discoverDirect(version.id,a.urls);if(!currentAttempt(a)||a.skipping||userPaused)return;if(url){a.recovering=false;a.alternate=version;startHealthySource(a,url,version.id);toast('נמצאה הקלטה אחרת של אותו שיר ואמן.');return;}}
   if((a.sourceAttempts||0)<3){a.recovering=false;setTimeout(()=>recoverHealthyPlayback(a),300);return;}
   a.recovering=false;await skipUnavailableAttempt(a);
  }finally{a.recovering=false;}
@@ -89,19 +89,19 @@ loadTrack=function(track,options={}){
   a.deadline=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&!a.played)skipUnavailableAttempt(a);},24000);
   a.versionTimer=setTimeout(()=>{if(!currentAttempt(a)||userPaused||a.played)return;searchingRecording(true);a.versionWork=otherSongRecordings(track).then(versions=>{if(!currentAttempt(a)||a.skipping||a.played)return [];a.versions=versions;versions.slice(0,2).forEach(v=>prefetchFastDirect(v.id));return versions;});},700);
  }
- const url=cachedDirect(track.id)||healthOf(track.id)?.url;
+ const decoded=healthOf(track.id);const url=decoded?.status==='decoded'?decoded.url:null;
  if(url){startHealthySource(a,url,healthOf(track.id)?.mediaId||track.id);return;}
  // Start source discovery with the primary, not after a 4-9 second failure wait.
  a.discovery=discoverDirect(track.id);
- const primary=Date.now()<primaryUnavailableUntil?null:fastDirectUrl(track.id);
- if(primary){startHealthySource(a,primary);armAttempt(a,2400);a.discovery.then(async u=>{
-  if(!u)return;const left=350-(performance.now()-a.startedAt);if(left>0)await new Promise(r=>setTimeout(r,left));
+ const primary=fastDirectUrl(track.id);
+ if(primary){startHealthySource(a,primary);armAttempt(a,4500);a.discovery.then(async u=>{
+  if(!u)return;const left=1600-(performance.now()-a.startedAt);if(left>0)await new Promise(r=>setTimeout(r,left));
   if(!currentAttempt(a)||a.skipping||userPaused||a.recovering||audioEl.readyState>=3||audioEl.currentTime>0)return;
   a.sourcesTried=true;a.discovery=null;startHealthySource(a,u);
  });}else recoverHealthyPlayback(a);
 };
 audioEl.addEventListener('playing',()=>{const a=activeDirectAttempt;if(!a||!currentAttempt(a))return;a.played=true;searchingRecording(false);stopFastDeadline(a);stopAttemptTimer(a);cancelDirectDiscovery(a.track.id);a.discovery=null;consecutiveUnavailable=0;markDirectHealth(a.mediaId||a.track.id,'decoded',audioEl.currentSrc);rememberDirect(a.mediaId||a.track.id,audioEl.currentSrc);window._directStartMs=Math.round(performance.now()-a.startedAt);if(a.alternate){markDirectHealth(a.track.id,'alternate',audioEl.currentSrc);directHealth.get(a.track.id).mediaId=a.mediaId;}});
-audioEl.addEventListener('waiting',()=>{const a=activeDirectAttempt;if(a&&currentAttempt(a)&&!userPaused){const at=audioEl.currentTime;stopAttemptTimer(a);a.timer=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&audioEl.currentTime<=at+.25)recoverHealthyPlayback(a);},at>0?5000:2400);}});
+audioEl.addEventListener('waiting',()=>{const a=activeDirectAttempt;if(a&&currentAttempt(a)&&!userPaused){const at=audioEl.currentTime;stopAttemptTimer(a);a.timer=setTimeout(()=>{if(currentAttempt(a)&&!userPaused&&audioEl.currentTime<=at+.25)recoverHealthyPlayback(a);},at>0?7000:4500);}});
 // Prefetch URLs only: two upcoming songs and the first two visible search rows.
 function prefetchFastDirect(id){if(id&&id!==current()?.id&&!cachedDirect(id))discoverDirect(id);}
 prewarmDirectTrack=prefetchFastDirect;
