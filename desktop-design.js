@@ -85,7 +85,8 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
 (function(){
  function topOverlay(){
   const overlays=[...document.querySelectorAll('.sheetbox.open,.page.on,#player:not(.hidden),#lyrView.open')];
-  return overlays.filter(el=>el.getBoundingClientRect().width>0).sort((a,b)=>Number(getComputedStyle(a).zIndex||0)-Number(getComputedStyle(b).zIndex||0)).at(-1);
+  const sheets=overlays.filter(el=>el.classList.contains('sheetbox'));if(sheets.length)return sheets.sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||30)-(parseInt(getComputedStyle(b).zIndex)||30)).at(-1);
+  return overlays.filter(el=>el.getBoundingClientRect().width>0).sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0)).at(-1);
  }
  document.addEventListener('click',e=>{
   const top=topOverlay();if(!top||top.contains(e.target))return;
