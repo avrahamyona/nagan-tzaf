@@ -1,7 +1,7 @@
 const desktopBackdrop=document.createElement('div');desktopBackdrop.id='desktopPlayerBackdrop';desktopBackdrop.className='hidden';desktopBackdrop.setAttribute('aria-hidden','true');document.body.appendChild(desktopBackdrop);
 function syncDesktopBackdrop(){desktopBackdrop.classList.toggle('hidden',$('player').classList.contains('hidden'));}
 new MutationObserver(syncDesktopBackdrop).observe($('player'),{attributes:true,attributeFilter:['class']});syncDesktopBackdrop();
-desktopBackdrop.addEventListener('click',()=>{$('pDown').click();});
+// Backdrop is visual only, consistent with mood/genre sheets. Close via pDown.
 
 const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,albums,videos,playlists=[]){
  desktopArtistRenderer(songs,albums,videos,playlists);
@@ -76,6 +76,6 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
  const player=$('player');
  player.addEventListener('pointerdown',e=>{
   if(e.target.closest('button,input,a,video,.volrow,#ytwrap,.pmeta2'))return;
-  if(innerWidth>=820||!e.target.closest('.player-topbar,.pgrab'))e.stopImmediatePropagation();
+  e.stopImmediatePropagation();
  },true);
 })();
