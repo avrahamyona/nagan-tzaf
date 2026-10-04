@@ -30,3 +30,66 @@ openMusicDomain=async function(spec){
  showGenreProgress();
  try{await work;const data=genreDataByName.get(spec.name);if(data)data._completedAt=performance.now();}finally{if(progressiveGenre===p)progressiveGenre=null;}
 };
+// v170: both Home mood shelves are song mixes, never a top-listening-artist search.
+const legacyMoodSpecs=[{name:'שמחה',desc:'קצב ושירים שמחים',moodAlias:'מסיבה'},{name:'עצב',desc:'שירי געגוע ומזרחית עצובה',moodAlias:'מזרחי דיכאון'},{name:'ריכוז',desc:'שירים נעימים בלי סטים ובלי בלדות',moodAlias:'שקט של ערב'}];
+const moodSongChoices={
+ 'מזרחי דיכאון':[['אבי ביטר','חבר ואח'],['זהבה בן','טיפת מזל'],['שריף','ממשיכה לבד'],['עופר לוי','יום הרווקים'],['זוהר ארגוב','בדד'],['אייל גולן','צליל מיתר']],
+ 'מזרחי שמח':[['משה פרץ','קרמלה'],['פאר טסי','מה נשאר לך'],['עומר אדם','שני משוגעים'],['ליאור נרקיס','שגעת'],['עדן חסון','איך שהיא רוקדת'],['איתי לוי','יש לי יום הולדת'],['אושר כהן','יום הולדת'],['עדן בן זקן','מסיבה']],
+ 'מזרחי טורקי':[['זהבה בן','טיפת מזל'],['עופר לוי','יום הרווקים'],['שריף','ממשיכה לבד'],['אבי ביטר','חבר ואח'],['זוהר ארגוב','הפרח בגני'],['חיים משה','לינדה']],
+ 'פופ שמח':[['סטטיק ובן אל','סלסולים'],['נועה קירל','פאוץ'],['עומר אדם','שני משוגעים'],['עדן חסון','איך שהיא רוקדת'],['אושר כהן','בדיוק ככה'],['אגם בוחבוט','אליטה'],['עדן בן זקן','מועבט'],['איתי לוי','הנה זה בא']],
+ 'אהבה':[['ישי לוי','ריקוד רומנטי'],['עומר אדם','שני משוגעים'],['משה פרץ','מאמי שלי'],['מור רביעי','תקרא לי מאמי'],['פאר טסי','מונה ליזה'],['אריק איינשטיין','אני ואתה']],
+ 'שקט של ערב':[['אריק איינשטיין','סע לאט'],['שלמה ארצי','תתארו לכם'],['חיים משה','לינדה'],['אביהו מדינה','לנר ולבשמים'],['ג\'ו עמר','יום זה לישראל'],['יובל טייב','שבת'],['משה לוק','יום השבת']],
+ 'געגוע':[['אריק איינשטיין','עוף גוזל'],['שלמה ארצי','האהבה הישנה'],['אייל גולן','צליל מיתר'],['חיים משה','אהבת חיי'],['עידן רייכל','ממעמקים'],['זוהר ארגוב','בדד'],['בועז שרעבי','לתת']],
+ 'מסיבה':[['סטטיק ובן אל','סלסולים'],['משה פרץ','קרמלה'],['פאר טסי','דרך השלום'],['עומר אדם','קאקדילה'],['עדן בן זקן','מסיבה'],['עדן חסון','שיכורים'],['ליאור נרקיס','ריחות של אלכוהול'],['איתי לוי','אפטר אמאל']],
+ 'נסיעה':[['אריק איינשטיין','סע לאט'],['פאר טסי','דרך השלום'],['סטטיק ובן אל','כביש החוף'],['משה פרץ','קרמלה'],['עומר אדם','שני משוגעים'],['פאר טסי','בוקר טוב'],['איתי לוי','הנה זה בא'],['שלמה ארצי','תתארו לכם']],
+ 'נוסטלגיה מזרחית':[['זוהר ארגוב','הפרח בגני'],['חיים משה','לינדה'],['זהבה בן','טיפת מזל'],['ישי לוי','ריקוד רומנטי'],['אביהו מדינה','לנר ולבשמים'],['ג\'ו עמר','יום זה לישראל']],
+ 'ארץ ישראל':[['אריק איינשטיין','אני ואתה'],['שלמה ארצי','תתארו לכם'],['כוורת','יו יה'],['יהורם גאון','שלום לך ארץ נהדרת'],['הגבעטרון','ים השיבולים'],['עוזי חיטמן','כאן'],['אילנית','בשנה הבאה'],['בועז שרעבי','הלוואי']]
+};
+const moodResults=new Map;
+function homeMoodSpec(spec){return homeVibes.includes(spec)||legacyMoodSpecs.includes(spec);}
+function moodBase(spec){return spec.moodAlias||spec.name;}
+function moodSafeTrack(t,spec){const raw=t.title+' '+t.artist;return !!t.id&&!state.lessSuggestions?.[t.id]&&(!t.dur||t.dur>=100&&t.dur<=600)&&!/(נחמן|ברסלב|nachman|breslov|dj\s*set|די\s*ג[׳']?יי|סט\s+של|full album|האלבום המלא|קריוקי|karaoke|remix|רמיקס|mashup|קאבר|cover)/i.test(raw)&&(!/ballad|בלדה|בלדות/i.test(raw)||/דיכאון|געגוע/.test(moodBase(spec)));}
+function balanceMoodTracks(list,spec){
+ const ids=new Set,titles=new Set,groups=new Map;
+ for(const t of list){if(!moodSafeTrack(t,spec)||ids.has(t.id))continue;const name=t._moodArtist||t.artist,key=autoplayArtistKey(name),title=autoplayTitle({...t,artist:name});if(titles.has(title))continue;ids.add(t.id);titles.add(title);if(!groups.has(key))groups.set(key,[]);if(groups.get(key).length<2)groups.get(key).push({...t,_moodArtist:name,_domainScope:spec.name});}
+ const out=[];for(let i=0;i<2;i++)for(const group of groups.values())if(group[i])out.push(group[i]);return out.slice(0,24);
+}
+async function loadMoodSongs(spec,onProgress=()=>{}){
+ const base=moodBase(spec),cached=moodResults.get(base);if(cached&&Date.now()-cached.at<300000){const ready=balanceMoodTracks(cached.tracks,spec);onProgress(ready);return ready;}
+ if(base==='שבת'){
+  const tracks=balanceMoodTracks(balancedShabbatTracks().map(t=>({...t,_moodArtist:t.artist})),spec);moodResults.set(base,{at:Date.now(),tracks});onProgress(tracks);return tracks;
+ }
+ const choices=moodSongChoices[base]||spec.songs||[],found=[];
+ // Known scoped catalog entries are candidates; no generic artist expansion.
+ for(const [artist,title]of choices){const known=popMediterraneanTracks.find(t=>autoplayArtistMatch(artist,t.artist)&&normTxt(t.title).includes(normTxt(title)))||shabbatTracks.find(t=>autoplayArtistMatch(artist,t.artist)&&normTxt(t.title)===normTxt(title));if(known)found.push({...known,_moodArtist:artist});}
+ let ready=balanceMoodTracks(found,spec);if(new Set(ready.map(t=>t._moodArtist)).size>=4)onProgress(ready);
+ await Promise.allSettled(choices.map(async([artist,title])=>{
+  if(found.some(t=>t._moodArtist===artist&&normTxt(t.title).includes(normTxt(title))))return;
+  const items=await within(searchMusicCached(artist+' '+title),12000);
+  const t=items.filter(t=>normTxt(t.title).includes(normTxt(title))&&normTxt(t.title+' '+t.artist).includes(normTxt(artist))&&moodSafeTrack(t,spec)).sort((a,b)=>Number(b.official||/רשמי|official|פונוקול/i.test(b.artist))-Number(a.official||/רשמי|official|פונוקול/i.test(a.artist)))[0];
+  if(t){found.push({...t,_moodArtist:artist});ready=balanceMoodTracks(found,spec);if(new Set(ready.map(t=>t._moodArtist)).size>=4)onProgress(ready);}
+ }));
+ ready=balanceMoodTracks(found,spec);if(new Set(ready.map(t=>t._moodArtist)).size<2)return [];
+ moodResults.set(base,{at:Date.now(),tracks:ready});onProgress(ready);return ready;
+}
+const vibeBeforeDiversity=buildHomeVibe;
+buildHomeVibe=function(spec){return homeMoodSpec(spec)?loadMoodSongs(spec):vibeBeforeDiversity(spec);};
+function renderMoodSongPage(spec,tracks,done){
+ const box=$('alTracks');box.replaceChildren();const artists=[...new Set(tracks.map(t=>t._moodArtist))];$('alMeta').textContent=tracks.length+' שירים · '+artists.length+' אמנים · עד 2 שירים לאמן';
+ const start=document.createElement('button');start.className='domain-more';start.textContent='▶ נגן את המיקס';start.disabled=!tracks.length;start.onclick=()=>{state.shuffle=false;state.repeat='off';playQueue(tracks,0);};box.append(start);
+ const note=document.createElement('p');note.className='catalog-note dim';note.textContent=tracks.length?'שירים באווירה הזאת · אמנים מתחלפים, בלי סטים של DJ':done?'אין כרגע מספיק אמנים מתאימים למיקס. נסה שוב.':'מחפש שירים מכמה אמנים...';box.append(note);
+ tracks.forEach((t,i)=>box.append(trackRow({...t,artist:t._moodArtist},{artistLink:true,onPlay:()=>{state.shuffle=false;playQueue(tracks,i);}})));
+ if(!done){const loading=document.createElement('p');loading.className='catalog-note dim';loading.textContent='עוד אמנים נטענים...';box.append(loading);}
+ if(tracks[0])$('alArt').src=sqThumb(tracks[0].id);
+}
+const openBeforeMoodDiversity=openMusicDomain;
+openMusicDomain=async function(spec){
+ if(!homeMoodSpec(spec))return openBeforeMoodDiversity(spec);
+ const seq=++alSeq;alCur=null;alTracks=[];document.querySelectorAll('.genre-start').forEach(x=>x.remove());$('page-album').classList.remove('genre-detail','release-list','phone-genre','from-artist');$('alTitle').textContent=spec.name;$('alArtist').textContent=spec.desc;$('alArtist').classList.remove('link');$('alArt').src='';$('alPlay').style.display='none';$('alShuffle').style.display='none';openPage('page-album');renderMoodSongPage(spec,[],false);
+ const tracks=await loadMoodSongs(spec,ready=>{if(seq===alSeq)renderMoodSongPage(spec,ready,false);});if(seq!==alSeq)return;alTracks=tracks;renderMoodSongPage(spec,tracks,true);window._lastMoodResult={name:spec.name,tracks};
+};
+function replaceLegacyMoodShelf(){
+ const box=$('listenBody');for(const section of [...box.children])if(section.querySelector('.asec-title,.secttl,h2')?.textContent.includes('שירים לפי מצב רוח')&&section.id!=='diverseLegacyMoods')section.remove();
+ if(box.querySelector('#diverseLegacyMoods'))return;const{sec,body}=sectionEl('שירים לפי מצב רוח','hscroll heroes');sec.id='diverseLegacyMoods';sec.classList.add('home-featured');for(const[i,spec]of legacyMoodSpecs.entries())body.append(heroCard({title:spec.name,kicker:'מיקס של כמה אמנים',desc:spec.desc,grad:GRADS[i],img:'',tap:()=>openMusicDomain(spec)}));box.append(sec);
+}
+const listenBeforeMoodDiversity=renderListen;renderListen=async function(){await listenBeforeMoodDiversity();replaceLegacyMoodShelf();};replaceLegacyMoodShelf();
