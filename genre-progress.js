@@ -210,10 +210,72 @@ moodBase=function(spec){if(spec._moodSource&&/דיכאון|געגוע/.test(spec
 const moodArtKinds={'מזרחי דיכאון':'rain','מזרחי שמח':'sun','מזרחי טורקי':'wave','פופ שמח':'spark','אהבה':'heart','שקט של ערב':'moon','געגוע':'rain','מסיבה':'spark','נסיעה':'path','שבת':'candle','נוסטלגיה מזרחית':'record','ארץ ישראל':'hill','שמחה':'sun','עצב':'rain','ריכוז':'book'};
 const moodArtPalettes={sun:['#ef6439','#ffcb66'],cup:['#583e72','#d4a67f'],bolt:['#573bec','#e0ff61'],run:['#11677b','#58e6bd'],path:['#21498d','#8dd8f5'],grid:['#243b66','#9cbbeb'],book:['#164f55','#7ddab6'],wave:['#235080','#6dd5e3'],spark:['#8034b0','#fa78b7'],moon:['#202952','#9d9bfa'],rain:['#243755','#8eb4d8'],heart:['#972548','#ff8e9c'],candle:['#614924','#f8ce7c'],record:['#75432e','#ffc985'],hill:['#2f6550','#c5df8e']};
 const moodArtPaths={sun:'<circle cx="240" cy="190" r="62"/><path d="M240 90v-30m0 260v-30M140 190h-30m260 0h-30M170 120l-22-22m184 184-22-22m0-140 22-22M148 282l22-22"/>',cup:'<path d="M160 150h130v85a65 65 0 0 1-130 0zM290 165h25a32 32 0 0 1 0 64h-25M170 310h150M195 100l12-30m42 30 12-30"/>',bolt:'<path d="m255 60-110 150h80l-20 125 130-180h-90z"/>',run:'<circle cx="266" cy="85" r="22"/><path d="m260 120-55 75 70 38-42 91m-28-129-35 65-60 15m130-125 60 42 44-16"/>',path:'<path d="M180 330c-125-110 215-80 110-180S190 80 245 40M240 65l30 5m-38 95 30 15m-65 82 35 15"/>',grid:'<rect x="145" y="105" width="190" height="150" rx="14"/><path d="M240 255v55m-60 0h120m-130-150h140m-140 38h90"/>',book:'<path d="M240 140c-40-25-80-25-115-5v160c40-25 80-20 115 5 35-25 75-30 115-5V135c-35-20-75-20-115 5v160"/>',wave:'<path d="M100 160c60-70 80 70 140 0s80 70 140 0M100 215c60-70 80 70 140 0s80 70 140 0M100 270c60-70 80 70 140 0s80 70 140 0"/>',spark:'<path d="m240 65 32 94 98 31-98 33-32 97-32-97-98-33 98-31zM360 65v55m-28-27h56M110 285v50m-25-25h50"/>',moon:'<path d="M285 80c-120 0-185 175-60 240 65 35 130-10 145-50-115 15-155-90-85-190z"/>',rain:'<path d="M130 180c-25-60 50-95 80-65 30-70 135-30 120 25 60 0 70 70 20 80H145M165 260l-20 40m95-40-20 40m95-40-20 40"/>',heart:'<path d="M240 310 125 200C40 95 190 55 240 140c50-85 200-45 115 60z"/>',candle:'<path d="M185 300V165h110v135M170 320h140M240 60c-65 70 20 110 20 50 0-20-20-35-20-50z"/>',record:'<circle cx="240" cy="190" r="115"/><circle cx="240" cy="190" r="45"/><circle cx="240" cy="190" r="8"/><path d="M160 150c20-42 55-60 100-60M320 230c-20 42-55 60-100 60"/>',hill:'<path d="m80 280 110-140 105 140m-30-80 45-70 90 150M80 310h320"/><circle cx="295" cy="85" r="28"/>'};
-function moodArtwork(spec,withTitle=true){const kind=spec._moodArt||moodArtKinds[spec.name]||moodArtKinds[moodBase(spec)]||'spark',colors=moodArtPalettes[kind],svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="'+colors[0]+'"/><stop offset="1" stop-color="'+colors[1]+'"/></linearGradient></defs><rect width="480" height="480" rx="30" fill="url(#g)"/><circle cx="415" cy="420" r="160" fill="white" opacity=".08"/><circle cx="40" cy="20" r="100" fill="white" opacity=".07"/><g fill="none" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">'+moodArtPaths[kind]+'</g><text x="240" y="410" fill="white" font-family="Arial,sans-serif" font-size="34" font-weight="bold" text-anchor="middle" direction="rtl">'+spec.name+'</text></svg>';return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(withTitle?svg:svg.replace(/<text[\s\S]*?<\/text>/,''));}
-function themedMoodCard(spec,i){const card=heroCard({title:spec.name,kicker:'אווירה ומצב רוח',desc:spec.desc,grad:GRADS[i%GRADS.length],img:moodArtwork(spec,false),tap:()=>openMusicDomain(spec)});card.classList.add('themed-mood-card');card.dataset.moodName=spec.name;return card;}
-addHomeVibes=function(){const box=$('listenBody');box.querySelector('#homeVibeShelf')?.remove();const{sec,body}=sectionEl('אווירה ומצב רוח','hscroll heroes');sec.id='homeVibeShelf';sec.classList.add('home-featured');homeVibes.forEach((spec,i)=>body.append(themedMoodCard(spec,i)));const anchor=[...box.children].find(x=>x.querySelector('.asec-title')?.textContent.includes('הושמעו לאחרונה'));if(anchor)anchor.after(sec);else box.prepend(sec);};
-replaceLegacyMoodShelf=function(){const box=$('listenBody');for(const section of [...box.children])if(section.querySelector('.asec-title')?.textContent.includes('שירים לפי מצב רוח'))section.remove();const{sec,body}=sectionEl('שירים לפי מצב רוח','hscroll heroes');sec.id='diverseLegacyMoods';sec.classList.add('home-featured');legacyMoodSpecs.forEach((spec,i)=>body.append(themedMoodCard(spec,i)));box.append(sec);};
+// v173: one semantic drawing per card, and a separate editorial style for vibes.
+const moodUniquePaths={
+ 'שמחה':moodArtPaths.sun,'עצב':moodArtPaths.rain,'ריכוז':moodArtPaths.book,
+ 'מזרחי דיכאון':'<path d="M125 280h230M155 280V155l170-35v140M155 175l170-35"/><ellipse cx="129" cy="280" rx="27" ry="19"/><ellipse cx="299" cy="260" rx="27" ry="19"/>',
+ 'מזרחי שמח':'<circle cx="240" cy="195" r="105"/><path d="M160 130l160 130M170 280l145-155m-135 95 85-70"/><circle cx="155" cy="260" r="15"/><circle cx="315" cy="130" r="15"/>',
+ 'מזרחי טורקי':'<path d="M180 300c-130-80-65-180 15-125l85-100 30 25-80 105c70 90-20 175-110 95M155 240l135-145M290 85l25-30m-10 45 30-25"/>',
+ 'פופ שמח':'<rect x="205" y="80" width="70" height="145" rx="35"/><path d="M175 165v30a65 65 0 0 0 130 0v-30M240 260v65m-55 0h110"/>',
+ 'אהבה':moodArtPaths.heart,'שקט של ערב':moodArtPaths.moon,
+ 'געגוע':'<path d="M115 175h250v145H115zM115 175l125 95 125-95M240 90c-35-50-105-5-50 35l50 35 50-35c55-40-15-85-50-35z"/>',
+ 'מסיבה':'<circle cx="240" cy="205" r="105"/><path d="M135 205h210M240 100v210M155 150h170m-170 110h170M210 105c-45 60-45 140 0 200m60-200c45 60 45 140 0 200M240 50v50"/>',
+ 'נסיעה':'<path d="m135 215 30-85h150l30 85v90H135zM145 215h190M175 305v25m130-25v25"/><circle cx="175" cy="260" r="15"/><circle cx="305" cy="260" r="15"/>',
+ 'שבת':moodArtPaths.candle,'נוסטלגיה מזרחית':moodArtPaths.record,'ארץ ישראל':moodArtPaths.hill,
+ 'בוקר טוב':'<path d="M100 250h280M155 235a85 85 0 0 1 170 0M240 120V85M150 150l-25-25m205 25 25-25M140 285h200M175 315h130"/>',
+ 'קפה של בוקר':moodArtPaths.cup,
+ 'אימון':moodArtPaths.bolt,
+ 'ריצה':moodArtPaths.run,
+ 'הליכה':'<path d="M125 245l40-100 50 20 5 80 90 25c35 10 55 30 45 50H110v-45zM160 260l65 5m-85-15 25-10"/>',
+ 'מוטיבציה':'<path d="m140 265 100-100 100 100M240 165v170M160 80h160M180 115h120"/>',
+ 'עבודה':moodArtPaths.grid,'לימודים':'<path d="M130 100h170v240H130zM170 150h90m-90 40h60m-60 40h40M265 300l25-65 65-130 30 15-65 130zM290 235l30 15"/>','נרגעים':moodArtPaths.wave,
+ 'מבשלים':'<path d="M145 180h190v85c0 65-190 65-190 0zM120 180h240M145 220h-35m225 0h35M190 115l10-35m40 35 10-35m40 35 10-35"/>',
+ 'ארוחת ערב':'<circle cx="240" cy="205" r="90"/><circle cx="240" cy="205" r="65"/><path d="M115 105v95m-20-95v60h40v-60M115 200v125M365 105v220m0-220c-40 25-40 95 0 95"/>',
+ 'מארחים':'<path d="M125 275h230M140 260a100 100 0 0 1 200 0M240 160v-30m-15 0h30M110 300h260"/>',
+ 'עם חברים':'<circle cx="240" cy="115" r="30"/><circle cx="140" cy="165" r="25"/><circle cx="340" cy="165" r="25"/><path d="M185 260v-50c0-70 110-70 110 0v50M90 310v-60c0-50 90-50 90 0v60m120 0v-60c0-50 90-50 90 0v60"/>',
+ 'מתארגנים לצאת':'<rect x="150" y="80" width="180" height="250" rx="15"/><path d="M175 330V105h130v225M280 205h5M195 130l35 35m0-35 35 35"/>',
+ 'סוף שבוע':'<path d="M160 145h160v150H160zM160 165h160M175 145l-30-75m160 75 30-75M155 295l-30 45m200-45 30 45M120 85h240"/>',
+ 'לילה מאוחר':'<circle cx="240" cy="200" r="105"/><path d="M240 125v80l60 35M125 85l20 20m-20 0 20-20M345 300l20 20m-20 0 20-20"/>',
+ 'יום גשום':'<path d="M105 220a135 135 0 0 1 270 0c-40-30-65-30-90 0-30-30-60-30-90 0-30-30-55-30-90 0zM240 90v235c0 40-55 40-55 0M150 75l-10 25m190-25-10 25"/>',
+ 'לב שבור':'<path d="M220 140c-50-85-175-30-95 60l90 90 30-55-45-35 45-45zM260 140c50-85 175-30 95 60l-90 90-15-55 40-35-40-45z"/>'
+};
+const moodEditorialPaths={
+ 'בוקר טוב':'<path d="M110 280h260M125 280V110h230v170M240 110v170M125 195h230"/><circle cx="295" cy="153" r="25"/><path d="M155 325h170"/>',
+ 'קפה של בוקר':'<path d="M165 140h135l-15 170H180zM150 140h165v-25H150zM190 190h85M190 230h85M210 85l10-30m40 30 10-30"/>',
+ 'אימון':'<path d="M175 205h130M110 170h35v70h-35zM145 140h30v130h-30zM305 140h30v130h-30zM335 170h35v70h-35z"/>',
+ 'ריצה':'<path d="M125 300c-40-60 40-140 115-140s155 80 115 140M145 290c-25-40 35-100 95-100s120 60 95 100M225 160v140m30-140v140M210 95h60m-60 30h60"/>',
+ 'הליכה':moodArtPaths.path,
+ 'מוטיבציה':'<path d="M100 310h70v-65h70v-65h70v-65h70M280 100l75-35m-75 0h75v75"/>',
+ 'עבודה':'<rect x="130" y="145" width="220" height="150" rx="20"/><path d="M195 145v-40h90v40M130 195c60 35 160 35 220 0M220 205v35h40v-35"/>',
+ 'לימודים':'<path d="m100 150 140-60 140 60-140 60zM155 175v75c55 35 115 35 170 0v-75M380 150v125m-15 35v-35h30v35M160 330h160"/>',
+ 'נרגעים':'<path d="M165 320c-90-110-35-200 135-215 30 160-35 230-135 215M165 320l135-215M200 260l-25-60m65 0 45 10"/>',
+ 'מבשלים':'<path d="M190 140c-50 10-65-70-15-80 30-60 100-45 110-5 65-10 80 70 25 85v70H190zM190 175h120M155 280h170M180 250v65m60-65v65m60-65v65"/>',
+ 'ארוחת ערב':'<path d="M140 170h200l-15 95c-10 40-160 40-170 0zM240 295v35m-55 0h110M200 95h80M220 125h40"/>',
+ 'מארחים':'<path d="M130 320V170l110-85 110 85v150H130M205 320v-85h70v85M155 205h25m120 0h25M240 170c-25-35-70-5-35 20l35 25 35-25c35-25-10-55-35-20z"/>',
+ 'עם חברים':'<path d="M110 125h180v110h-65l-45 45v-45h-70zM310 170h60v140h-70l-45 35v-35h-35v-45M145 165h110m-110 35h75"/>',
+ 'מתארגנים לצאת':'<path d="M170 110c35-70 105-70 140 0v160H170zM240 270v55m-50 0h100M210 105l55 55M200 140l45 45M120 125v50m-25-25h50"/>',
+ 'סוף שבוע':'<rect x="135" y="100" width="210" height="220" rx="15"/><path d="M135 155h210M185 80v40m110-40v40m-100 70h30v30h-30zm65 0h30v30h-30zm-65 65h30v30h-30zm65 0h30v30h-30z"/>',
+ 'לילה מאוחר':'<path d="M260 70c-100 0-145 145-50 200 50 30 110-5 125-40-90 10-130-75-75-160zM115 285v50m-25-25h50M350 100v40m-20-20h40M345 300v30m-15-15h30"/>',
+ 'יום גשום':moodArtPaths.rain,
+ 'לב שבור':'<path d="M130 145c-50-75-165-20-95 55l90 85 40-45-45-25 45-45z" transform="translate(80 0)"/><path d="M270 145c50-75 165-20 95 55l-90 85-35-45 45-25-40-45zM220 80l-20 20m20 5-20 20"/>'
+};
+function moodArtwork(spec,withTitle=true,style=spec._moodVisual||'gradient'){
+ const kind=spec._moodArt||moodArtKinds[spec.name]||moodArtKinds[moodBase(spec)]||'spark',colors=moodArtPalettes[kind],paths=(style==='editorial'?moodEditorialPaths[spec.name]:null)||moodUniquePaths[spec.name]||moodArtPaths[kind];
+ const editorial=style==='editorial';
+ const bg=editorial?'<rect width="480" height="480" rx="30" fill="#f6f1e8"/><rect x="24" y="24" width="432" height="432" rx="18" fill="none" stroke="'+colors[0]+'" stroke-width="2"/><circle cx="240" cy="202" r="145" fill="'+colors[1]+'" opacity=".24"/><path d="M52 355h376" stroke="'+colors[0]+'" stroke-width="2"/>':'<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="'+colors[0]+'"/><stop offset="1" stop-color="'+colors[1]+'"/></linearGradient></defs><rect width="480" height="480" rx="30" fill="url(#g)"/><circle cx="415" cy="420" r="160" fill="white" opacity=".08"/><circle cx="40" cy="20" r="100" fill="white" opacity=".07"/>';
+ const ink=editorial?colors[0]:'white';
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480">'+bg+'<g fill="none" stroke="'+ink+'" stroke-width="'+(editorial?6:9)+'" stroke-linecap="round" stroke-linejoin="round">'+paths+'</g>'+(withTitle?'<text x="240" y="410" fill="'+ink+'" font-family="Arial,sans-serif" font-size="34" font-weight="bold" text-anchor="middle" direction="rtl">'+spec.name+'</text>':'')+'</svg>';
+ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+function themedMoodCard(spec,i,style='gradient'){
+ const pageSpec={...spec,_moodVisual:style},card=heroCard({title:spec.name,kicker:style==='editorial'?'אווירה ומצב רוח':'שירים לפי מצב רוח',desc:spec.desc,grad:GRADS[i%GRADS.length],img:moodArtwork(spec,false,style),tap:()=>openMusicDomain(pageSpec)});
+ card.classList.add('themed-mood-card',style==='editorial'?'editorial-mood-card':'gradient-mood-card');card.dataset.moodName=spec.name;return card;
+}
+// Copies used for page style are still mood specs: check by semantic name, not object identity.
+const homeMoodSpecBefore173=homeMoodSpec;
+homeMoodSpec=function(spec){return homeMoodSpecBefore173(spec)||[...homeVibes,...legacyMoodSpecs].some(s=>s.name===spec.name);};
+addHomeVibes=function(){const box=$('listenBody');box.querySelector('#homeVibeShelf')?.remove();const{sec,body}=sectionEl('אווירה ומצב רוח','hscroll heroes');sec.id='homeVibeShelf';sec.classList.add('home-featured');homeVibes.forEach((spec,i)=>body.append(themedMoodCard(spec,i,'editorial')));const anchor=[...box.children].find(x=>x.querySelector('.asec-title')?.textContent.includes('הושמעו לאחרונה'));if(anchor)anchor.after(sec);else box.prepend(sec);};
+replaceLegacyMoodShelf=function(){const box=$('listenBody');for(const section of [...box.children])if(section.querySelector('.asec-title')?.textContent.includes('שירים לפי מצב רוח'))section.remove();const{sec,body}=sectionEl('שירים לפי מצב רוח','hscroll heroes');sec.id='diverseLegacyMoods';sec.classList.add('home-featured');[...legacyMoodSpecs,...homeVibes.filter(s=>s._moodSource)].forEach((spec,i)=>body.append(themedMoodCard(spec,i)));box.append(sec);};
 const renderMoodBeforeThemes=renderMoodSongPage;
 renderMoodSongPage=function(spec,tracks,done){renderMoodBeforeThemes(spec,tracks,done);const art=moodArtwork(spec);$('alArt').src=art;$('alArt').alt=spec.name;$('alArt').onerror=null;$('page-album').style.setProperty('--album-cover','none');for(const img of $('alTracks').querySelectorAll('img')){img.src=art;img.onerror=null;img.alt='';}};
-const themeStyle=document.createElement('style');themeStyle.textContent='#homeVibeShelf .themed-mood-card,#diverseLegacyMoods .themed-mood-card{height:300px}#homeVibeShelf .themed-mood-card>img,#diverseLegacyMoods .themed-mood-card>img{object-fit:cover;opacity:1}#page-album.mood-song-page .albumhead::before{display:none}.themed-mood-card .hero-title{font-size:24px}';document.head.append(themeStyle);addHomeVibes();replaceLegacyMoodShelf();
+const themeStyle=document.createElement('style');themeStyle.textContent='#homeVibeShelf .themed-mood-card,#diverseLegacyMoods .themed-mood-card{height:300px}#homeVibeShelf .themed-mood-card>img,#diverseLegacyMoods .themed-mood-card>img{object-fit:cover;opacity:1}#page-album.mood-song-page .albumhead::before{display:none}.themed-mood-card .hero-title{font-size:24px}#homeVibeShelf .editorial-mood-card{background:#f6f1e8;color:#273443}#homeVibeShelf .editorial-mood-card .hc-bg{display:none}#homeVibeShelf .editorial-mood-card .hc-scrim{background:linear-gradient(transparent 50%,#f6f1e8 88%)}#homeVibeShelf .editorial-mood-card .hc-title{color:#273443;text-shadow:none}#homeVibeShelf .editorial-mood-card .hc-kicker,#homeVibeShelf .editorial-mood-card .hc-desc{color:#586272}';document.head.append(themeStyle);addHomeVibes();replaceLegacyMoodShelf();
