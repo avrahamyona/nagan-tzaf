@@ -69,3 +69,13 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
   ],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
  }).observe(player,{attributes:true,attributeFilter:['class']});
 })();
+// v178: the legacy full-player drag must never start on desktop artwork/body.
+// It writes translateY() over the centered desktop transform, moving the panel
+// away from the pointer and exposing the dismiss backdrop under the same click.
+(function(){
+ const player=$('player');
+ player.addEventListener('pointerdown',e=>{
+  if(e.target.closest('button,input,a,video,.volrow,#ytwrap,.pmeta2'))return;
+  if(innerWidth>=820||!e.target.closest('.player-topbar,.pgrab'))e.stopImmediatePropagation();
+ },true);
+})();
