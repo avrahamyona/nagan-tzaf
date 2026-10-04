@@ -23,14 +23,15 @@ alternateDirectUrl=id=>discoverDirect(id);
 resolveAudioUrl=id=>{const h=healthOf(id);return h?.url?Promise.resolve(h.url):discoverDirect(id);};
 async function healthyDirectSource(id,excluded=new Set,soft=false){return discoverDirect(id,excluded);}
 async function cachedHealthySource(id){return discoverDirect(id);}
-function sameSongRecording(seed,t){
+function recordingIdentity(t){const prefix=String(t.title||'').match(/^\s*(.{2,60}?)\s*[-–|]\s*/);return prefix?{...t,artist:prefix[1]}:t;}
+function sameSongRecording(seed,t){seed=recordingIdentity(seed);
  const title=autoplayTitle(seed),other=autoplayTitle({...t,artist:seed.artist});if(!title||!other||t.id===seed.id)return false;
  const titleMatch=title===other||other.length>title.length&&other.includes(title)&&other.length<title.length+40;
  const artist=autoplayArtistKey(seed.artist).replace(/הערוץהרשמי|officialchannel/g,'');
  const credited=autoplayArtistMatch(seed.artist,t.artist)||!!artist&&autoplayArtistKey(t.title).includes(artist)||!!seed.ch&&seed.ch===t.ch;
  return titleMatch&&credited&&!/(karaoke|instrumental|קריוקי|ללא מילים|מחרוזת|full album)/i.test(t.title);
 }
-async function otherSongRecordings(track){
+async function otherSongRecordings(track){track=recordingIdentity(track);
  const title=autoplayTitle(track);if(!title||!track.artist)return [];
  const artist=String(track.artist).replace(/הערוץ הרשמי|official channel| - topic/gi,'').trim();
  const results=await Promise.allSettled([artist+' '+title,artist+' '+title+' מילים'].map(q=>within(searchMusicCached(q),5000)));
@@ -95,7 +96,7 @@ loadTrack=function(track,options={}){
  a.discovery=discoverDirect(track.id);
  const primary=fastDirectUrl(track.id);
  if(primary){startHealthySource(a,primary);armAttempt(a,4500);a.discovery.then(async u=>{
-  if(!u)return;const left=1600-(performance.now()-a.startedAt);if(left>0)await new Promise(r=>setTimeout(r,left));
+  if(!u)return;const left=4500-(performance.now()-a.startedAt);if(left>0)await new Promise(r=>setTimeout(r,left));
   if(!currentAttempt(a)||a.skipping||userPaused||a.recovering||audioEl.readyState>=3||audioEl.currentTime>0)return;
   a.sourcesTried=true;a.discovery=null;startHealthySource(a,u);
  });}else recoverHealthyPlayback(a);
