@@ -55,7 +55,17 @@ async function skipUnavailableAttempt(a){
 }
 async function recoverHealthyPlayback(a){
  if(!currentAttempt(a)||a.skipping||a.recovering||a.options.autoplay!==false&&userPaused)return;
- a.recovering=true;stopAttemptTimer(a);streamConnecting=true;a.options.startAt=Math.max(a.options.startAt||0,audioEl.currentTime||0);searchingRecording(true);
+ a.recovering=true;stopAttemptTimer(a);
+ // Retry an edge/transient transport once for this same media ID, never another song.
+ const media=a.mediaId||a.track.id;
+ a.workerRetried=a.workerRetried||new Set;
+ const primary=fastDirectUrl(media);
+ if(primary&&!a.workerRetried.has(media)){
+  a.workerRetried.add(media);a.recovering=false;
+  const fresh=primary+(primary.includes('?')?'&':'?')+'retry='+Date.now();
+  startHealthySource(a,fresh,media);return;
+ }
+streamConnecting=true;a.options.startAt=Math.max(a.options.startAt||0,audioEl.currentTime||0);searchingRecording(true);
  const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
  // A failed recording never blacklists the primary for unrelated songs.
  try{
@@ -138,3 +148,19 @@ document.addEventListener('pointerdown',()=>{if(typeof actx!=='undefined'&&actx&
 audioEl.addEventListener('playing',resumeDirectAudioGraph);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!userPaused&&current())resumeDirectAudioGraph();});
 window.addEventListener('pageshow',()=>{if(!userPaused&&current())resumeDirectAudioGraph();});
+
+// Catalog extraction can be LOGIN_REQUIRED on a cold worker edge. This upload
+// was checked live: exact song and singer, not a same-title different artist.
+const verifiedSameRecording177={
+ 'w1Vz7nJohU8':[{id:'wKX5v00LOLQ',title:'נהוראי תורג׳מן -פאפית (קאבר)',artist:'Nehoray Turgeman Official',dur:159,ch:'UCcg-2cROHRU2yIomYJWXaaQ'}]
+};
+const recordingsBefore177=otherSongRecordings;
+otherSongRecordings=async function(track){
+ const pinned=(verifiedSameRecording177[track.id]||[]).filter(t=>sameSongRecording(track,t));
+ if(pinned.length){
+  // A verified candidate is enough to start recovery without waiting for search.
+  recordingsBefore177(track).catch(()=>{});
+  return pinned.map(t=>({...t}));
+ }
+ return recordingsBefore177(track);
+};
