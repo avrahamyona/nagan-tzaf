@@ -281,7 +281,7 @@ renderMoodSongPage=function(spec,tracks,done){renderMoodBeforeThemes(spec,tracks
 const themeStyle=document.createElement('style');themeStyle.textContent='#homeVibeShelf .themed-mood-card,#diverseLegacyMoods .themed-mood-card{height:300px}#homeVibeShelf .themed-mood-card>img,#diverseLegacyMoods .themed-mood-card>img{object-fit:cover;opacity:1}#page-album.mood-song-page .albumhead::before{display:none}.themed-mood-card .hero-title{font-size:24px}#homeVibeShelf .editorial-mood-card{background:#f6f1e8;color:#273443}#homeVibeShelf .editorial-mood-card .hc-bg{display:none}#homeVibeShelf .editorial-mood-card .hc-scrim{background:linear-gradient(transparent 50%,#f6f1e8 88%)}#homeVibeShelf .editorial-mood-card .hc-title{color:#273443;text-shadow:none}#homeVibeShelf .editorial-mood-card .hc-kicker,#homeVibeShelf .editorial-mood-card .hc-desc{color:#586272}';document.head.append(themeStyle);addHomeVibes();replaceLegacyMoodShelf();
 
 // The content release owns its badge. Old cached gesture scripts cannot label new content.
-const CONTENT_RELEASE='v175';
+const CONTENT_RELEASE='v176';
 function syncContentRelease(){
  for(const id of ['engineBadge','verChip']){
   const el=$(id);if(!el)continue;
