@@ -111,3 +111,30 @@ let searchPrefetchTimer;new MutationObserver(()=>{clearTimeout(searchPrefetchTim
 // Queue candidates are never gated by transport tests. Prepare just the next two.
 const relatedBeforeHealth=buildRelatedAutoplay;
 buildRelatedAutoplay=async function(seed,existing){const tracks=await relatedBeforeHealth(seed,existing);const result=balancedAutoplay(tracks,seed,existing);result.slice(0,2).forEach(t=>prefetchFastDirect(t.id));return result;};
+
+// v176: resumed browser audio graphs can remain suspended after interruption.
+function resumeDirectAudioGraph(){
+ if(typeof actx!=='undefined'&&actx&&actx.state!=='running'&&actx.state!=='closed')return actx.resume().catch(()=>{});
+ return Promise.resolve();
+}
+const startHealthyBeforeResume176=startHealthySource;
+startHealthySource=function(a,url,mediaId=a.track.id){if(a.options.autoplay!==false)resumeDirectAudioGraph();return startHealthyBeforeResume176(a,url,mediaId);};
+const toggleBeforeResume176=togglePlay;
+togglePlay=function(){
+ if(videoMode||!current()||!activeAudio())return toggleBeforeResume176();
+ if(!audioEl.paused&&!userPaused)return toggleBeforeResume176();
+ const track=current(),pos=audioEl.currentTime||0;userPaused=false;
+ resumeDirectAudioGraph();
+ if(!audioEl.src||audioEl.dataset.vid!==track.id||audioEl.error||activeDirectAttempt?.skipping){loadTrack(track,{autoplay:true,startAt:pos});return;}
+ const generation=playGen;
+ audioEl.play().catch(e=>{
+  if(generation!==playGen||current()?.id!==track.id||userPaused)return;
+  if(noteAutoplayBlock(e)){syncPlayUI(true);return;}
+  loadTrack(track,{autoplay:true,startAt:pos});
+ });
+};
+// A trusted tap must resume the graph inside the gesture, not after a network await.
+document.addEventListener('pointerdown',()=>{if(typeof actx!=='undefined'&&actx&&actx.state==='suspended')resumeDirectAudioGraph();},{capture:true,passive:true});
+audioEl.addEventListener('playing',resumeDirectAudioGraph);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!userPaused&&current())resumeDirectAudioGraph();});
+window.addEventListener('pageshow',()=>{if(!userPaused&&current())resumeDirectAudioGraph();});
