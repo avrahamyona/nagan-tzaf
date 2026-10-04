@@ -124,13 +124,13 @@ function moodSearchEligible(t,spec){
  if(!moodSafeTrack(t,spec)||setSignals(t)>=2)return false;
  const raw=t.title+' '+t.artist;if(/מחרוזת|medley|mix\b|אוסף|מיטב|שעה|hour|playlist|פלייליסט|רצף|כל השירים/i.test(raw)&&moodBase(spec)!=='שבת')return false;
  // Explicit sad moods are the only mood pages that accept ballad-tagged results.
- if(!/דיכאון|געגוע/.test(moodBase(spec))&&/צליל מיתר|בדד|ממעמקים|עוף גוזל|לתת|עטור מצחך|האהבה הישנה|הלוואי/.test(t.title))return false;
+ if(!/דיכאון|געגוע/.test(moodBase(spec))&&/צליל מיתר|בדד|ממעמקים|עוף גוזל|לתת|עטור מצחך|האהבה הישנה|הלוואי|שירי דיכאון|בעצבות|חורף בחלון|ברגעים שאת הולכת|כבר לא|דמעות|כאב|בוכה|נשבר|פרידה|בלעדיך|בלעדייך/.test(t.title))return false;
  const name=moodArtistName(t,spec);const allowed=moodBase(spec)==='שבת'?shabbatArtists.map(a=>a.name):(moodSongChoices[moodBase(spec)]||[]).map(x=>x[0]);if(!name||!allowed.includes(name))return false;
- if(moodBase(spec)==='שבת'&&!/שבת|shabbat|shabbos|הבדלה|לנר ולבשמים|לכה דודי|שלום עליכם|צור משלו|יום זה לישראל|יה ריבון/.test(t.title))return false;
+ if(moodBase(spec)==='שבת'&&!/שבת|shabbat|shabbos|הבדלה|לנר ולבשמים|לכה דודי|שלום עליכם|צור משלו|יום זה לישראל|יה ריבון|דרור יקרא|מזמור שיר ליום/.test(t.title))return false;
  return true;
 }
 function newMoodCursor(spec){
- const broad=moodPageQueries[moodBase(spec)]||[];const artists=moodBase(spec)==='שבת'?shabbatArtists.map(a=>a.name):[...new Set((moodSongChoices[moodBase(spec)]||[]).map(x=>x[0]))];const queries=[...broad,...artists.map(name=>name+' '+(broad[0]||spec.name)),...(moodBase(spec)==='שבת'?artists.flatMap(name=>[name+' לכה דודי',name+' שלום עליכם',name+' כי אשמרה שבת',name+' יה ריבון']):[])];
+ const broad=moodPageQueries[moodBase(spec)]||[];const artists=moodBase(spec)==='שבת'?shabbatArtists.map(a=>a.name):[...new Set((moodSongChoices[moodBase(spec)]||[]).map(x=>x[0]))];const queries=[...broad,...artists.map(name=>name+' '+(broad[0]||spec.name)),...(moodBase(spec)==='שבת'?artists.flatMap(name=>[name+' לכה דודי',name+' שלום עליכם',name+' כי אשמרה שבת',name+' יה ריבון',name+' צור משלו',name+' יום זה לישראל',name+' דרור יקרא',name+' מזמור שיר ליום השבת']):[])];
  return {spec,tracks:[],pool:[],seen:new Set,cursors:queries.map(q=>({q,next:null,started:false,done:false})),busy:false,done:false};
 }
 async function nextMoodPage(cursor){
