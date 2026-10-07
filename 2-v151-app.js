@@ -1796,6 +1796,9 @@ const closePlayer = () => { $('player').classList.add('hidden'); };
 $('pDown').addEventListener('click', closePlayer);
 (function playerDrag() {
   const p = $('player');
+  const dragCss = document.createElement('style');
+  dragCss.textContent = '#player .player-topbar,#player #artWrap,#player #pBg,#player #pArt{touch-action:none}#player .pinner{touch-action:pan-x}';
+  document.head.appendChild(dragCss);
   let startY = null, dy = 0, dragging = false, pid = null;
   p.addEventListener('pointerdown', e => {
     if (p.classList.contains('hidden')) return;
