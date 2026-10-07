@@ -1168,8 +1168,8 @@ function trackRow(t, opts = {}) {
     <div class="meta"><div class="t"></div><div class="a"></div></div>
     ${t.dur ? `<span class="dur">${fmt(t.dur)}</span>` : ''}
     <button class="dots" aria-label="אפשרויות"><svg><use href="#i-dots"/></svg></button>`;
-  row.querySelector('.t').textContent = t.title;
-  const artistName = opts.sub || t.artist;
+  row.querySelector('.t').textContent = aviCleanTitle(t.title);
+  const artistName = aviCleanArtist(opts.sub || t.artist);
   row.querySelector('.a').textContent = artistName;
   if (opts.artistLink && artistName) {
     const artist = row.querySelector('.a');
