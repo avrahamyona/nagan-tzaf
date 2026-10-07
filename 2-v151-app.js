@@ -1145,6 +1145,19 @@ function restoreLast() {
 }
 
 /* ---------- rows ---------- */
+function aviCleanTitle(s) {
+  const raw = String(s || '');
+  let x = raw.replace(/\s*#[^\s#]+/g, '');
+  x = x.replace(/\s*[\(\[]\s*(official\s*(music\s*)?(video|audio|lyric\s*video|visualizer)|lyrics?(\s*video)?|music\s*video|audio|hd|4k|קליפ\s*רשמי|הקליפ\s*הרשמי)\s*[\)\]]/ig, '');
+  const y = x.replace(/^\s*(live\s*session|לייב\s*סשן)\s*[-:|]?\s*/i, '');
+  if (y.trim()) x = y;
+  x = x.replace(/\s{2,}/g, ' ').trim();
+  return x || raw;
+}
+function aviCleanArtist(s) {
+  const raw = String(s || '');
+  return raw.replace(/\s*-\s*Topic\s*$/i, '').trim() || raw;
+}
 function trackRow(t, opts = {}) {
   const row = document.createElement('div');
   row.className = 'row' + (current() && current().id === t.id ? ' playing' : '');
