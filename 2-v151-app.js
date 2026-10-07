@@ -549,7 +549,7 @@ async function resolveAudioUrl(vid) {
     const base = STREAM_API.replace(/\/$/, '');
     // Fast path: worker proxies audio bytes directly. Extraction can be flaky
     // per edge location, so probe twice before giving up.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
         if (r.ok || r.status === 206) return base + '/audio/' + vid;
@@ -557,7 +557,7 @@ async function resolveAudioUrl(vid) {
       } catch (e) {
         window._streamDiag = 'probe' + (attempt + 1) + ': ' + (e.name === 'AbortError' ? 'timeout' : 'network-ERR');
       }
-      if (!attempt) await new Promise(r => setTimeout(r, 1500));
+      if (attempt < 4) await new Promise(r => setTimeout(r, 900 + attempt * 500));
     }
   }
   try {
