@@ -60,10 +60,14 @@ async function recoverHealthyPlayback(a){
  const media=a.mediaId||a.track.id;
  a.workerRetried=a.workerRetried||new Set;
  const primary=fastDirectUrl(media);
- if(primary&&!a.workerRetried.has(media)){
-  a.workerRetried.add(media);a.recovering=false;
-  const fresh=(primary.startsWith('https://avi-music-audio.avi-music.workers.dev/')?'https://avi-music-account-staging.avi-music.workers.dev/audio/'+encodeURIComponent(media):primary)+'?retry='+Date.now();
-  startHealthySource(a,fresh,media);return;
+ a.workerTries=a.workerTries||{};
+ if(primary&&(a.workerTries[media]||0)<6){
+  const n=a.workerTries[media]=(a.workerTries[media]||0)+1;a.workerRetried.add(media);
+  const alt=primary.startsWith('https://avi-music-audio.avi-music.workers.dev/');
+  const host=(alt&&n%2===1)?'https://avi-music-account-staging.avi-music.workers.dev/audio/'+encodeURIComponent(media):primary;
+  if(n>1)await new Promise(r=>setTimeout(r,1800));
+  if(!currentAttempt(a)||a.skipping||userPaused){a.recovering=false;return;}
+  a.recovering=false;startHealthySource(a,host+(host.includes('?')?'&':'?')+'retry='+Date.now(),media);return;
  }
 streamConnecting=true;a.options.startAt=Math.max(a.options.startAt||0,audioEl.currentTime||0);searchingRecording(true);
  const cached=resolvedDirect.get(a.track.id);if(cached&&a.urls.has(cached.url))resolvedDirect.delete(a.track.id);const health=healthOf(a.track.id);if(health?.url&&a.urls.has(health.url))directHealth.delete(a.track.id);
