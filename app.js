@@ -1102,7 +1102,7 @@ function paintNow() {
   };
   if (art.dataset.vid !== t.id) { art.dataset.vid = t.id; setArt('maxres'); }
   else if (art.complete && art.naturalWidth === 0) setArt('maxres');
-  $('pTitle').textContent = t.title; $('pArtist').textContent = t.artist;
+  $('pTitle').textContent = aviCleanTitle(t.title); $('pArtist').textContent = aviCleanArtist(t.artist);
   $('pArtist').classList.toggle('link', !!t.artist);
   $('cShuffle').classList.toggle('on', state.shuffle);
   $('cRepeat').classList.toggle('on', state.repeat !== 'off');
