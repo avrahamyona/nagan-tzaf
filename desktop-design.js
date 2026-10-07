@@ -89,7 +89,7 @@ const desktopArtistRenderer=renderArtistBody;renderArtistBody=function(songs,alb
   return overlays.filter(el=>el.getBoundingClientRect().width>0).sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0)).at(-1);
  }
  document.addEventListener('click',e=>{
-  const top=topOverlay();if(!top||top.contains(e.target))return;
+  const top=topOverlay();if(!top||top.contains(e.target)||(e.target.closest&&e.target.closest('#aviBugButton,#aviBugDialog')))return;
   e.preventDefault();e.stopImmediatePropagation();
   if(top.id==='player')closePlayer();
   else if(top.id==='lyrView')closeLyrics();
