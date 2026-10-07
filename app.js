@@ -1085,7 +1085,7 @@ function paintNow() {
   if (!t) { $('mini').classList.add('hidden'); return; }
   $('mini').classList.remove('hidden');
   $('mArt').src = thumb(t.id);
-  $('mTitle').textContent = t.title; $('mArtist').textContent = t.artist;
+  $('mTitle').textContent = aviCleanTitle(t.title); $('mArtist').textContent = aviCleanArtist(t.artist);
   const art = $('pArt');
   art.crossOrigin = 'anonymous';
   const setArt = (q) => { art.dataset.q = q; art.src = sqThumb(t.id, q); };
