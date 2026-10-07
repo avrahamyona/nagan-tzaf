@@ -10,7 +10,7 @@
   start=null;if(e.touches.length!==1)return;
   const page=pageAt(e.target);if(!page)return;
   const t=e.touches[0];start={page,x:t.clientX,y:t.clientY,vertical:false,edge:t.clientX>=innerWidth-28,
-   control:!!e.target.closest('input,textarea,select,button,a,video,iframe,.row,.hscroll,.swipe-track,.volrow,.karaoke')};
+   control:!!e.target.closest('input,textarea,select,video,iframe,.hscroll,.swipe-track,.volrow,.karaoke')};
  },{capture:true,passive:true});
  document.addEventListener('touchmove',e=>{
   if(!start)return;if(e.touches.length!==1){start.vertical=true;return;}
