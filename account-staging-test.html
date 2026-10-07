@@ -1,8 +1,26 @@
 <!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Avi Music - בדיקת התחברות</title><style>body{background:#101014;color:white;font-family:Arial;margin:25px;text-align:center}button{padding:12px;border-radius:10px;border:0}pre{white-space:pre-wrap;direction:ltr;font-size:13px}</style></head><body><h1>בדיקת חשבון Avi Music</h1><p>סביבת בדיקה נפרדת. ספריית המוזיקה לא תשתנה.</p><div id="testResult">ממתין להתחברות...</div><button id="testLogout" hidden>יציאה</button><script>
 window.AVI_ACCOUNT_CONFIG={clientId:'238419392106-2qjigh5svc1lgjuvepe27lilgjfu79qp.apps.googleusercontent.com',worker:'https://avi-music-account-staging.avi-music.workers.dev'};
-document.addEventListener('avi-account-ready',e=>{const p=e.detail.profile;document.getElementById('testResult').textContent='מחובר: '+p.name+' ('+p.email+')';document.getElementById('testLogout').hidden=false;});document.getElementById('testLogout').onclick=()=>window.aviAccount.logout();
+document.addEventListener('avi-account-ready',e=>{const p=e.detail.profile;document.getElementById('testResult').textContent='מחובר: '+p.name+' ('+p.email+')';document.getElementById('testLogout').hidden=false;});document.getElementById('testLogout').onclick=async()=>{if(await window.aviAccount.logout()){document.getElementById('testResult').textContent='לא מחובר';document.getElementById('testLogout').hidden=true;}};
 </script>
-</script><script>
+<script>
+// Staging-only first-party GIS redirect bridge. No automatic sign-in loops.
+(function(){'use strict';
+ const cfg=window.AVI_ACCOUNT_CONFIG;if(!cfg?.worker)return;
+ const FLOW_KEY='avi_account_redirect_v1',SESSION_KEY='avi_account_session_v1';
+ const encode=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+ const valid=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
+ async function hash(s){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(n=>n.toString(16).padStart(2,'0')).join('');}
+ async function api(path,body){const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);try{const r=await fetch(cfg.worker+path,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ctl.signal});const j=await r.json();if(!r.ok)throw Error(j.error||'redirect_failed');return j;}finally{clearTimeout(timer);}}
+ window.aviStartRedirect=async()=>{const msg=document.getElementById('testResult'),button=document.getElementById('redirectLogin');try{if(button)button.disabled=true;msg.textContent='מכין התחברות בחלון מלא...';const verifier=encode(crypto.getRandomValues(new Uint8Array(32)));sessionStorage.setItem(FLOW_KEY,JSON.stringify({verifier,started:Date.now()}));const r=await api('/g/redirect-start',{verifierHash:await hash(verifier)});if(!valid(r.nonce)||r.loginUrl!==cfg.worker+'/g/redirect-login?nonce='+r.nonce)throw Error('invalid_start');sessionStorage.setItem(FLOW_KEY,JSON.stringify({verifier,nonce:r.nonce,started:Date.now()}));location.assign(r.loginUrl);}catch{sessionStorage.removeItem(FLOW_KEY);msg.textContent='לא ניתן להתחיל התחברות כרגע. נסה שוב.';if(button)button.disabled=false;}};
+ window.aviCompleteRedirect=async()=>{const p=new URLSearchParams(location.hash.slice(1));if(!p.has('avi_code')&&!p.has('avi_nonce'))return false;
+ const code=p.get('avi_code'),nonce=p.get('avi_nonce');history.replaceState(null,'',location.pathname+location.search);
+ let f;try{f=JSON.parse(sessionStorage.getItem(FLOW_KEY)||'null');sessionStorage.removeItem(FLOW_KEY);}catch{}
+ if(!f||!valid(code)||!valid(nonce)||!valid(f.verifier)||f.nonce!==nonce||Date.now()-f.started>300000)throw Error('redirect_state');
+ const r=await api('/g/redirect-exchange',{nonce,code,verifier:f.verifier});if(!valid(r.token)||r.profile?.email!=='avrahamyona10@gmail.com')throw Error('invalid_session');
+ localStorage.setItem(SESSION_KEY,JSON.stringify({token:r.token}));return true;
+ };
+})();
+
 (function(){try{
 const cfg=window.AVI_ACCOUNT_CONFIG;if(!cfg?.clientId||!cfg?.worker)return;
 const SESSION_KEY='avi_account_session_v1';let token='',profile=null;
@@ -14,11 +32,11 @@ async function api(path,options={}){const headers={'Content-Type':'application/j
 function showAccount(p){profile=p;gate.hidden=true;gate.style.display='none';document.dispatchEvent(new CustomEvent('avi-account-ready',{detail:{profile:p}}));}
 async function signIn(credential,nonce){message('מאמת התחברות...');try{const result=await api('/g/sign-in',{method:'POST',body:JSON.stringify({credential,nonce})});try{localStorage.setItem(SESSION_KEY,JSON.stringify({token:result.token}));}catch{message('לא ניתן לזכור את ההתחברות בדפדפן הזה. נסה מחוץ לגלישה פרטית.');return;}token=result.token;showAccount(result.profile);}catch(e){message(e.message==='no_access'?'אין לחשבון הזה גישה לאזור האישי.':'לא ניתן להתחבר כרגע. הנתונים לא שונו.');document.getElementById('aviAccountRetry').hidden=false;}}
 async function loadGoogle(){if(window.google?.accounts?.id)return;await new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.onload=ok;s.onerror=()=>no(Error('google_unavailable'));document.head.append(s);});}
-async function login(){gate.style.display='grid';gate.hidden=false;document.getElementById('aviAccountRetry').hidden=true;try{const ch=await api('/g/challenge',{method:'POST',body:'{}'});await loadGoogle();message('כניסה עם Google לחשבון שלך');google.accounts.id.initialize({client_id:cfg.clientId,nonce:ch.nonce,auto_select:false,callback:r=>signIn(r.credential,ch.nonce)});document.getElementById('aviGoogleSignIn').replaceChildren();google.accounts.id.renderButton(document.getElementById('aviGoogleSignIn'),{type:'standard',theme:'outline',size:'large',text:'signin_with',locale:'he'});}catch{message('לא ניתן לטעון התחברות כרגע.');document.getElementById('aviAccountRetry').hidden=false;}}
+async function login(){gate.style.display='grid';gate.hidden=false;document.getElementById('aviAccountRetry').hidden=true;message('כניסה עם Google בחלון מלא');const holder=document.getElementById('aviGoogleSignIn');holder.replaceChildren();const b=document.createElement('button');b.id='redirectLogin';b.textContent='המשך לכניסה עם Google';b.onclick=window.aviStartRedirect;holder.append(b);}
 async function restore(){if(!token)return login();try{const data=await api('/g/session');showAccount(data.profile);}catch(e){if(e.status===401||e.status===403){token='';try{localStorage.removeItem(SESSION_KEY);}catch{}return login();}message('לא ניתן לבדוק התחברות כרגע. נסה שוב בלי לשנות נתונים.');document.getElementById('aviAccountRetry').hidden=false;}}
 document.getElementById('aviAccountRetry').onclick=restore;
 window.aviAccount={api,get profile(){return profile;},async logout(){if(token){try{await api('/g/logout',{method:'POST',body:'{}'});}catch{message('לא ניתן לבטל את ההתחברות כרגע. נסה שוב.');return false;}}token='';profile=null;try{localStorage.removeItem(SESSION_KEY);}catch{}await login();return true;}};
-restore();
+(async()=>{try{const completed=await window.aviCompleteRedirect();if(completed)token=JSON.parse(localStorage.getItem(SESSION_KEY)).token;await restore();}catch{message('ההתחברות לא הושלמה. נסה שוב בחלון מלא.');document.getElementById('aviAccountRetry').hidden=false;}})();
 }catch(e){console.error('account client unavailable',{kind:e?.name});}})();
 
 </script></body></html>
