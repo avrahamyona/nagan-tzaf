@@ -3,21 +3,23 @@
 for(const id of ['queueShuffle','queueRepeat']){const old=$(id),button=old.cloneNode(true);old.replaceWith(button);button.addEventListener('click',()=>{if(id==='queueShuffle')state.shuffle=!state.shuffle;else state.repeat=state.repeat==='off'?'all':state.repeat==='all'?'one':'off';save();paintNow();renderQueue();toast(id==='queueShuffle'?(state.shuffle?'נגינה אקראית':'נגינה לפי הסדר'):(state.repeat==='off'?'בלי חזרה':state.repeat==='all'?'חזרה על הרשימה':'חזרה על השיר'));});}
 const advanceBeforeRepeatAll=advance;advance=async function(dir,auto){if(dir>0&&state.repeat==='all'&&!state.priorityQueue?.length&&!state.priorityCurrent&&!state.shuffle&&state.qi>=state.queue.length-1){recordPlayed(current());state.qi=0;const t=current();if(t)pushHistory(t);loadTrack(t);paintNow();save();if($('queueSheet').classList.contains('open'))renderQueue();return;}return advanceBeforeRepeatAll(dir,auto);};
 })();
-loadAlbumTracks=async function(a) {
+const albumRequests=new Map();
+function albumDuration(t){if(Number.isFinite(Number(t.dur))&&Number(t.dur)>0)return Number(t.dur);const d=String(t.duration||'').trim();return /^\d+(?::\d{1,2}){1,2}$/.test(d)?d.split(':').reduce((n,v)=>n*60+Number(v),0):0;}
+async function fetchAlbumTracksExact(a) {
   // Fetch the exact playlist from the first-party Worker, with Piped as a
   // parallel fallback; the fastest nonempty, identity-checked source wins.
   const id = a.plId;
   const errors=[];let cached=null;try{cached=JSON.parse(localStorage.getItem('avi_album_'+id)||'null');}catch{}
   const worker = (async () => {
     if (!/^OLAK5uy_[A-Za-z0-9_-]{10,80}$/.test(id)) return null;
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 7500);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 18000);
     try {
       const r = await fetch(STREAM_API_DEFAULT + '/album/' + encodeURIComponent(id), { signal: ctl.signal });
       if (!r.ok){const err=await r.json().catch(()=>({}));errors.push(/429/.test(err.error||'')||r.status===429?'throttled':'source');return null;}
       const j = await r.json();
       if (j.playlistId !== id || !Array.isArray(j.tracks)) return null;
       const tracks = j.tracks.filter(t => /^[A-Za-z0-9_-]{11}$/.test(t.id || '') && t.verifiedId === id && t.title)
-        .map(t => ({ id: t.id, title: t.title, artist: a.artistName || t.artist || '', dur: Number(t.dur) || 0, ch: '' }));
+        .map(t => ({ id: t.id, title: t.title, artist: a.artistName || t.artist || '', dur: albumDuration(t), ch: '' }));
       return tracks.length ? { tracks, name: j.title || a.title, uploader: a.artistName || '' } : null;
     } catch { return null; } finally { clearTimeout(timer); }
   })();
@@ -33,6 +35,12 @@ loadAlbumTracks=async function(a) {
   if(cached?.playlistId===id&&Array.isArray(cached.tracks)&&cached.tracks.length&&Date.now()-cached.savedAt<86400000)return {...cached,cached:true};
   return { tracks: [], name:a.title,uploader:a.artistName||'',error:errors.includes('throttled')?'throttled':'source'};
 }
+loadAlbumTracks=async function(a){
+ const id=a?.plId;if(typeof id!=='string'||!/^[A-Za-z0-9_-]{10,100}$/.test(id))return {tracks:[],name:a?.title||'',uploader:a?.artistName||'',error:'source'};
+ if(albumRequests.has(id))return albumRequests.get(id);
+ const pending=fetchAlbumTracksExact(a);albumRequests.set(id,pending);
+ try{return await pending;}finally{if(albumRequests.get(id)===pending)albumRequests.delete(id);}
+};
 const albumBeforeReliability=openAlbum;openAlbum=async function(a) {
   $('page-album').classList.remove('mood-song-page','genre-detail','phone-genre');const seq = ++alSeq;
   // Album opened from an artist page must appear above that page.
