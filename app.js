@@ -970,7 +970,7 @@ function updateMediaSession() {
   const setMeta = artwork => {
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: t.title, artist: t.artist, album: 'Avi Music', artwork,
+        title: aviCleanTitle(t.title), artist: aviCleanArtist(t.artist), album: 'Avi Music', artwork,
       });
     } catch {}
     registerMediaControls(); // iOS may reset its transport set after metadata changes.
