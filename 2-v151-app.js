@@ -551,9 +551,7 @@ async function resolveAudioUrl(vid) {
     // per edge location, so probe twice before giving up.
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const r = await fetch(base + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } });
-        if (r.ok || r.status === 206) return base + '/audio/' + vid;
-        window._streamDiag = 'probe' + (attempt + 1) + ': HTTP ' + r.status;
+        for (const b of [base, 'https://avi-music-account-staging.avi-music.workers.dev']) { const r = await fetch(b + '/audio/' + vid, { headers: { Range: 'bytes=0-0' } }); if (r.ok || r.status === 206) return b + '/audio/' + vid; window._streamDiag = 'probe' + (attempt + 1) + ': HTTP ' + r.status; }
       } catch (e) {
         window._streamDiag = 'probe' + (attempt + 1) + ': ' + (e.name === 'AbortError' ? 'timeout' : 'network-ERR');
       }
