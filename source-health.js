@@ -62,7 +62,7 @@ async function recoverHealthyPlayback(a){
  const primary=fastDirectUrl(media);
  if(primary&&!a.workerRetried.has(media)){
   a.workerRetried.add(media);a.recovering=false;
-  const fresh=primary+(primary.includes('?')?'&':'?')+'retry='+Date.now();
+  const fresh=(primary.startsWith('https://avi-music-audio.avi-music.workers.dev/')?'https://avi-music-account-staging.avi-music.workers.dev/audio/'+encodeURIComponent(media):primary)+'?retry='+Date.now();
   startHealthySource(a,fresh,media);return;
  }
 streamConnecting=true;a.options.startAt=Math.max(a.options.startAt||0,audioEl.currentTime||0);searchingRecording(true);
