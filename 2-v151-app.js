@@ -1147,7 +1147,7 @@ function restoreLast() {
 /* ---------- rows ---------- */
 function aviCleanTitle(s) {
   const raw = String(s || '');
-  let x = raw.replace(/\s*#[^\s#]+/g, '');
+  let x = raw.indexOf('#') > 0 ? raw.slice(0, raw.indexOf('#')) : raw.replace(/#/g, '');
   x = x.replace(/\s*[\(\[]\s*(official\s*(music\s*)?(video|audio|lyric\s*video|visualizer)|lyrics?(\s*video)?|music\s*video|audio|hd|4k|קליפ\s*רשמי|הקליפ\s*הרשמי)\s*[\)\]]/ig, '');
   const y = x.replace(/^\s*(live\s*session|לייב\s*סשן)\s*[-:|]?\s*/i, '');
   if (y.trim()) x = y;
