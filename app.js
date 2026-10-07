@@ -1766,7 +1766,9 @@ $('pDown').addEventListener('click', closePlayer);
   let startY = null, dy = 0, dragging = false, pid = null;
   p.addEventListener('pointerdown', e => {
     if (p.classList.contains('hidden')) return;
-    if (e.target.closest('button, input, a, video, .volrow, #ytwrap, .pmeta2')) return;
+    if (e.target.closest('button, input, a, .volrow, .pmeta2, .ptitlerow, .seekrow, .pcontrols, .seek10, .pbottom')) return;
+    const aw = $('artWrap'), zoneBottom = aw ? aw.getBoundingClientRect().bottom : 0;
+    if (!zoneBottom || e.clientY > zoneBottom) return;
     startY = e.clientY; dy = 0; dragging = true; pid = e.pointerId;
     p.style.transition = 'none';
     try { p.setPointerCapture(pid); } catch {}
