@@ -56,3 +56,54 @@ function paint(){
 document.addEventListener('avi-account-ready',e=>{verified=e.detail?.profile;paint();});
 document.addEventListener('click',e=>{if(e.target.closest('#aviProfileButton'))queueMicrotask(paint);});
 })();
+
+// Repair center (v197): owner-only list of reported problems, open on the right and handled on the left.
+(function(){
+'use strict';
+if(window.aviRepairCenter)return;window.aviRepairCenter=true;
+const css=document.createElement('style');
+css.textContent='#aviRepairCenter{position:fixed;inset:0;z-index:2147482000;background:#f6f6f8;color:#171717;direction:rtl;font:16px/1.5 Arial,sans-serif;display:flex;flex-direction:column}#aviRepairCenter[hidden]{display:none}#aviRepairCenter header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#fff;border-bottom:1px solid #e3e3e8}#aviRepairCenter h2{margin:0;font-size:20px}#aviRepairClose{border:0;background:#eee;border-radius:50%;width:38px;height:38px;font-size:18px;cursor:pointer}#aviRepairScroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:14px}#aviRepairCols{display:flex;gap:12px;align-items:flex-start}.aviRepairCol{flex:1;min-width:0}.aviRepairCol h3{margin:0 0 10px;font-size:15px}.aviRepairCard{background:#fff;border-radius:14px;padding:11px 12px;margin-bottom:10px;box-shadow:0 1px 4px #0001;word-break:break-word;font-size:14px}.aviRepairCard small{display:block;color:#666;margin-top:6px}.aviRepairEta{color:#b45309;font-weight:700}.aviRepairDone{color:#15803d;font-weight:700}.aviRepairEmpty{color:#888;padding:6px 2px;font-size:14px}#aviRepairSummary{margin:18px 0 28px;padding:14px;border-radius:14px;background:#171717;color:#fff;text-align:center;font-weight:700}';
+document.head.append(css);
+const el=document.createElement('div');el.id='aviRepairCenter';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-label','מרכז התיקונים');
+const head=document.createElement('header'),title=document.createElement('h2'),close=document.createElement('button');
+title.textContent='מרכז התיקונים';close.id='aviRepairClose';close.type='button';close.textContent='✕';close.setAttribute('aria-label','סגירה');head.append(title,close);
+const scroll=document.createElement('div');scroll.id='aviRepairScroll';el.append(head,scroll);document.body.append(el);
+close.onclick=()=>{el.hidden=true;};
+const fmt=t=>{try{return new Date(t).toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'});}catch{return '';}};
+function card(r,done){
+ const c=document.createElement('div');c.className='aviRepairCard';
+ const t=document.createElement('div');t.textContent=r.text;c.append(t);
+ const s=document.createElement('small');s.textContent='דווח: '+fmt(r.created_at);c.append(s);
+ const x=document.createElement('small');
+ if(done){x.className='aviRepairDone';x.textContent='טופל'+(r.handled_at?' · '+fmt(r.handled_at):'');}
+ else{x.className='aviRepairEta';x.textContent=r.eta?'עוד '+r.eta+' עד שיהיה מוכן':'ההערכה תתעדכן בקרוב';}
+ c.append(x);return c;
+}
+function column(name,rows,done){
+ const col=document.createElement('div');col.className='aviRepairCol';
+ const h=document.createElement('h3');h.textContent=name+' ('+rows.length+')';col.append(h);
+ if(!rows.length){const e=document.createElement('div');e.className='aviRepairEmpty';e.textContent=done?'עדיין אין תיקונים שטופלו.':'אין דיווחים שממתינים.';col.append(e);}
+ for(const r of rows)col.append(card(r,done));return col;
+}
+function render(data){
+ const rows=(data&&data.reports)||[];
+ const open=rows.filter(r=>r.status!=='handled').sort((a,b)=>a.created_at-b.created_at);
+ const done=rows.filter(r=>r.status==='handled').sort((a,b)=>(b.handled_at||b.created_at)-(a.handled_at||a.created_at));
+ const cols=document.createElement('div');cols.id='aviRepairCols';cols.append(column('לא טופלו',open,false),column('טופלו',done,true));
+ const sum=document.createElement('div');sum.id='aviRepairSummary';
+ sum.textContent=open.length?(data.overall_eta?'הערכה כוללת: עוד '+data.overall_eta+' עד שכל התיקונים יהיו מוכנים':'ההערכה הכוללת תתעדכן בקרוב'):'כל התיקונים שדווחו טופלו';
+ scroll.replaceChildren(cols,sum);
+}
+async function openCenter(){
+ el.hidden=false;scroll.textContent='טוען...';
+ try{render(await window.aviAccount.api('/g/reports?after=0'));}catch{scroll.textContent='לא ניתן לטעון את מרכז התיקונים כרגע. נסה שוב.';}
+}
+function addRow(){
+ const links=document.getElementById('aviProfileLinks');if(!links||document.getElementById('aviRepairRow'))return;
+ const b=document.createElement('button');b.id='aviRepairRow';b.type='button';b.className='profile-row';b.textContent='מרכז התיקונים';b.onclick=openCenter;
+ const logout=document.getElementById('aviAccountLogout');if(logout&&logout.parentNode===links)links.insertBefore(b,logout);else links.append(b);
+}
+document.addEventListener('avi-account-ready',()=>setTimeout(addRow,0));
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#aviProfileButton'))setTimeout(addRow,60);},true);
+setTimeout(addRow,1500);
+})();
