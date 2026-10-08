@@ -16,7 +16,7 @@ resolveAudioUrl=function(id){
  const url=fastDirectUrl(id);if(url)return Promise.resolve(url);
  return alternateDirectUrl(id);
 };
-let directLoadTimeout=null,directFallbackUsed=false,directFallbackPending=false,primaryUnavailableUntil=0;
+let directSameRetried=false,directLoadTimeout=null,directFallbackUsed=false,directFallbackPending=false,primaryUnavailableUntil=0;
 function beginDirectSource(track,url,options,generation){
  if(generation!==playGen||current()?.id!==track.id)return;
  if(!url){directSongUnavailable();return;}
@@ -27,7 +27,7 @@ function beginDirectSource(track,url,options,generation){
 loadTrack=function(track,options={}){
  if(!track)return;if(videoMode){useClipEngine(track,options.startAt,options.autoplay!==false);return;}
  clearTimeout(ytRetryTimer);clearTimeout(directLoadTimeout);pendingLoad=null;try{yt.stopVideo();}catch{}
- const opts={autoplay:true,...options};restoreAttempt=!!(opts.startAt&&opts.autoplay);lastCur=-1;streamConnecting=true;engine='audio';playGen++;directFallbackUsed=false;directFallbackPending=false;audioRetry=0;window._streamDiag='direct-only';
+ const opts={autoplay:true,...options};restoreAttempt=!!(opts.startAt&&opts.autoplay);lastCur=-1;streamConnecting=true;engine='audio';playGen++;directFallbackUsed=false;directSameRetried=false;directFallbackPending=false;audioRetry=0;window._streamDiag='direct-only';
  pendingSeek.delete(audioEl);audioEl.dataset.vid=track.id;userPaused=opts.autoplay===false;paintEngineBadge();
  const generation=playGen,url=Date.now()<primaryUnavailableUntil?null:fastDirectUrl(track.id);
  if(url)beginDirectSource(track,url,opts,generation);else{directFallbackUsed=true;directFallbackPending=true;alternateDirectUrl(track.id).then(u=>{if(generation!==playGen)return;directFallbackPending=false;beginDirectSource(track,u,opts,generation);});}
@@ -35,13 +35,16 @@ loadTrack=function(track,options={}){
 };
 async function retryDirectSource(track,options,generation){
  if(generation!==playGen||videoMode||directFallbackPending)return;
+ if(!directSameRetried&&Date.now()>=primaryUnavailableUntil&&fastDirectUrl(track.id)){directSameRetried=true;window._streamDiag='direct-same-retry';const again=fastDirectUrl(track.id)+'?r='+Date.now().toString(36);setTimeout(()=>{if(generation!==playGen)return;beginDirectSource(track,again,options,generation);clearTimeout(directLoadTimeout);directLoadTimeout=setTimeout(()=>{if(generation===playGen&&streamConnecting){directFallbackUsed=false;retryDirectSource(track,options,generation);}},7000);},250);return;}
  if(directFallbackUsed){directSongUnavailable();return;}directFallbackUsed=true;directFallbackPending=true;primaryUnavailableUntil=Date.now()+300000;window._streamDiag='direct-source-retry';
  const url=await alternateDirectUrl(track.id);if(generation!==playGen)return;directFallbackPending=false;
  beginDirectSource(track,url,options,generation);
  clearTimeout(directLoadTimeout);directLoadTimeout=setTimeout(()=>{if(generation===playGen&&streamConnecting)directSongUnavailable();},9000);
 }
 audioEl.addEventListener('error',event=>{event.stopImmediatePropagation();const track=current();if(track&&!videoMode)retryDirectSource(track,{autoplay:!userPaused,startAt:livePosition()},playGen);},true);
-audioEl.addEventListener('playing',()=>clearTimeout(directLoadTimeout));
+let prefetchedId='';
+function warmNextTrack(){try{const n=state.queue[state.qi+1];if(!n||!n.id||n.id===prefetchedId||!STREAM_API)return;prefetchedId=n.id;fetch(STREAM_API.replace(/\/$/,'')+'/url/'+encodeURIComponent(n.id),{mode:'no-cors',cache:'no-store'}).catch(()=>{});}catch{}}
+audioEl.addEventListener('playing',()=>{clearTimeout(directLoadTimeout);setTimeout(warmNextTrack,1500);});
 // Old lock-screen play handlers see audio engine and use the same audio element.
 if(!videoMode&&(engine==='yt'||engine==='yt-pending')){pendingLoad=null;try{yt.stopVideo();}catch{}engine='audio';streamConnecting=false;syncPlayUI(true);}
 // No embed surface is needed: clip mode already uses an ad-free direct video.
