@@ -16,7 +16,7 @@ document.addEventListener('avi-account-ready',e=>{const p=e.detail.profile;docum
  const code=p.get('avi_code'),nonce=p.get('avi_nonce');history.replaceState(null,'',location.pathname+location.search);
  let f;try{f=JSON.parse(sessionStorage.getItem(FLOW_KEY)||'null');sessionStorage.removeItem(FLOW_KEY);}catch{}
  if(!f||!valid(code)||!valid(nonce)||!valid(f.verifier)||f.nonce!==nonce||Date.now()-f.started>300000)throw Error('redirect_state');
- const r=await api('/g/redirect-exchange',{nonce,code,verifier:f.verifier});if(!valid(r.token)||r.profile?.email!=='avrahamyona10@gmail.com')throw Error('invalid_session');
+ const r=await api('/g/redirect-exchange',{nonce,code,verifier:f.verifier});if(!valid(r.token)||typeof r.profile?.email!=='string')throw Error('invalid_session');
  localStorage.setItem(SESSION_KEY,JSON.stringify({token:r.token}));return true;
  };
 })();
