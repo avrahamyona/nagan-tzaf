@@ -1,5 +1,5 @@
 // v183: queue buttons act directly, never click controls outside their overlay.
-(function(){
+;(function(){
 for(const id of ['queueShuffle','queueRepeat']){const old=$(id),button=old.cloneNode(true);old.replaceWith(button);button.addEventListener('click',()=>{if(id==='queueShuffle')state.shuffle=!state.shuffle;else state.repeat=state.repeat==='off'?'all':state.repeat==='all'?'one':'off';save();paintNow();renderQueue();toast(id==='queueShuffle'?(state.shuffle?'נגינה אקראית':'נגינה לפי הסדר'):(state.repeat==='off'?'בלי חזרה':state.repeat==='all'?'חזרה על הרשימה':'חזרה על השיר'));});}
 const advanceBeforeRepeatAll=advance;advance=async function(dir,auto){if(dir>0&&state.repeat==='all'&&!state.priorityQueue?.length&&!state.priorityCurrent&&!state.shuffle&&state.qi>=state.queue.length-1){recordPlayed(current());state.qi=0;const t=current();if(t)pushHistory(t);loadTrack(t);paintNow();save();if($('queueSheet').classList.contains('open'))renderQueue();return;}return advanceBeforeRepeatAll(dir,auto);};
 })();
@@ -74,3 +74,13 @@ const albumBeforeReliability=openAlbum;openAlbum=async function(a) {
     })));
   } catch { if (seq === alSeq) $('alTracks').innerHTML = '<div class="empty"><p>לא הצלחתי לטעון את השירים של האלבום כרגע.</p></div>'; }
 }
+
+// v210: Up Next contains future tracks only. Keep now-playing in the player.
+;(function(){
+ const before=renderQueue;
+ renderQueue=function(){before();$('queueHero').classList.add('hidden');};
+ const sheet=$('queueSheet');let start=null;
+ sheet.addEventListener('touchstart',e=>{if(e.touches.length!==1||!e.target.closest('.queuegrab,.queuemodes')||e.target.closest('button,input'))return;start={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
+ sheet.addEventListener('touchend',e=>{if(!start)return;const t=e.changedTouches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;start=null;if(dy>65&&dy>Math.abs(dx)*1.4)closeSheet('queueSheet');},{passive:true});
+ sheet.addEventListener('touchcancel',()=>{start=null},{passive:true});
+})();
