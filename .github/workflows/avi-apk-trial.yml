@@ -52,7 +52,7 @@ jobs:
               targetCompatibility JavaVersion.VERSION_1_8
             }
           }
-          dependencies { implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2' }
+          dependencies { implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0' }
           APP
           cat > apk-trial/app/src/main/AndroidManifest.xml <<'MANIFEST'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
