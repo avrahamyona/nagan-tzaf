@@ -1,0 +1,123 @@
+name: Avi Music APK trial
+on:
+  push:
+    branches: [apk-trial-20261018]
+    paths: [.github/workflows/avi-apk-trial.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Generate isolated TWA trial project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk-trial/app/src/main/res/drawable apk-trial/app/src/main/res/values
+          cat > apk-trial/settings.gradle <<'SETTINGS'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name = 'AviMusicTrial'
+          include ':app'
+          SETTINGS
+          cat > apk-trial/build.gradle <<'ROOT'
+          plugins { id 'com.android.application' version '8.7.3' apply false }
+          ROOT
+          echo 'android.useAndroidX=true' > apk-trial/gradle.properties
+          cat > apk-trial/app/build.gradle <<'APP'
+          plugins { id 'com.android.application' }
+          android {
+            namespace 'com.avrahamyona.avimusic.trial'
+            compileSdk 35
+            defaultConfig {
+              applicationId 'com.avrahamyona.avimusic.trial'
+              minSdk 23
+              targetSdk 35
+              versionCode 1
+              versionName '0.1-trial'
+            }
+            compileOptions {
+              sourceCompatibility JavaVersion.VERSION_1_8
+              targetCompatibility JavaVersion.VERSION_1_8
+            }
+          }
+          dependencies { implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2' }
+          APP
+          cat > apk-trial/app/src/main/AndroidManifest.xml <<'MANIFEST'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <application android:label="Avi Music Trial" android:icon="@drawable/app_icon" android:allowBackup="false" android:supportsRtl="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+              <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+              <activity android:name="com.google.androidbrowserhelper.trusted.LauncherActivity" android:exported="true">
+                <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://avrahamyona.github.io/nagan-tzaf/" />
+                <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@android:color/white" />
+                <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+              </activity>
+              <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
+            </application>
+          </manifest>
+          MANIFEST
+          cat > apk-trial/app/src/main/res/values/strings.xml <<'STRINGS'
+          <resources><string name="asset_statements">[{\"relation\":[\"delegate_permission/common.handle_all_urls\"],\"target\":{\"namespace\":\"web\",\"site\":\"https://avrahamyona.github.io\"}}]</string></resources>
+          STRINGS
+          cp icon-192.png apk-trial/app/src/main/res/drawable/app_icon.png
+          curl -fsSL --retry 2 https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.9/bin/gradle -p apk-trial --no-daemon assembleDebug
+          mkdir -p trial-output
+          cp apk-trial/app/build/outputs/apk/debug/app-debug.apk trial-output/Avi-Music-Trial-0.1.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs trial-output/Avi-Music-Trial-0.1.apk > trial-output/signature.txt
+          sha256sum trial-output/Avi-Music-Trial-0.1.apk > trial-output/SHA256SUMS.txt
+          cat > trial-output/README.txt <<'NOTES'
+          Avi Music Android TWA trial 0.1. Android 6+ and a TWA-capable browser such as Chrome required.
+          Direct installation test only. Debug-signed, not a production Android release.
+          Opens the existing live site. Does not bypass Google login or change server permissions.
+          Full-screen verification is NOT configured. Expect a browser bar (Custom Tab fallback).
+          Google sign-in, playback, screen-off behavior, next-track and reconnect require a real-device test.
+          This package does not add native background playback or push notifications.
+          This is a disposable signing key. A future trial may require uninstalling this package first.
+          NOTES
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avi-music-apk-trial
+          path: trial-output/
+          retention-days: 7
+      - name: Enable KVM for emulator smoke test
+        continue-on-error: true
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android emulator launch evidence
+        id: smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb install -r trial-output/Avi-Music-Trial-0.1.apk
+            adb shell pm list packages > trial-output/emulator-packages.txt
+            adb shell am start -n com.avrahamyona.avimusic.trial/com.google.androidbrowserhelper.trusted.LauncherActivity
+            sleep 15
+            adb exec-out screencap -p > trial-output/emulator-launch.png
+            adb shell dumpsys activity activities > trial-output/emulator-activities.txt
+            adb logcat -d -t 400 > trial-output/emulator-logcat.txt
+      - name: Publish direct-install trial
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        run: |
+          echo "Emulator step outcome: $SMOKE_OUTCOME (launch evidence only, not a Google sign-in/playback test)" >> trial-output/README.txt
+          gh release create "apk-trial-${GITHUB_RUN_ID}" trial-output/* --target "$GITHUB_SHA" --prerelease --title 'Avi Music APK trial 0.1' --notes-file trial-output/README.txt
