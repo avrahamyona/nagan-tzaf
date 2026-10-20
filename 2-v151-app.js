@@ -3343,7 +3343,9 @@ async function runSearch(q, pill) {
       if (seq !== searchSeq || !res.albums?.length) return;
       box.querySelectorAll('.js-albums').forEach(x => x.remove());
       const nq = normTxt(q);
-      const exact = res.albums.filter(a => normTxt(a.title) === nq);
+      // Song queries already carry verified albums in one ranked list; only
+      // album-name/artist searches split exact-title albums into their own rows.
+      const exact = res.albums.songQuery ? [] : res.albums.filter(a => normTxt(a.title) === nq);
       if (exact.length) {
         const h = document.createElement('h2'); h.className = 'secttl js-albums js-exact'; h.textContent = 'אלבומים';
         const wrap = document.createElement('div'); wrap.className = 'js-albums js-exact';

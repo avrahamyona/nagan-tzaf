@@ -54,8 +54,13 @@ searchPlaylists=async function(q,filter='music_albums'){
    if(match)found.push({index,live:liveAlbumRe.test(String(match.title))||liveAlbumRe.test(String(album.title))?1:0,album:{...album,matchedSongId:match.id,matchedSongTitle:match.title}});
   }
  }));
- // Studio album first, then live albums/performances, each in search order.
- return found.sort((a,b)=>a.live-b.live||a.index-b.index).map(x=>x.album);
+ // The song's original album (exact title match) first, then other studio
+ // albums, then live albums/performances, each group in search order. One
+ // combined albums row: the flag tells the painter to skip exact-title rows.
+ const key2=normTxt(q);
+ const out=found.sort((a,b)=>(normTxt(b.album.title)===key2)-(normTxt(a.album.title)===key2)||a.live-b.live||a.index-b.index).map(x=>x.album);
+ out.songQuery=true;
+ return out;
 };
 // Deterministic section order: lyric matches ("תוצאות מובילות"), exact album
 // rows (album-name queries), the artist card, the albums row, the songs
