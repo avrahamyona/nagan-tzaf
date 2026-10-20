@@ -3345,8 +3345,8 @@ async function runSearch(q, pill) {
       const nq = normTxt(q);
       const exact = res.albums.filter(a => normTxt(a.title) === nq);
       if (exact.length) {
-        const h = document.createElement('h2'); h.className = 'secttl js-albums'; h.textContent = 'אלבומים';
-        const wrap = document.createElement('div'); wrap.className = 'js-albums';
+        const h = document.createElement('h2'); h.className = 'secttl js-albums js-exact'; h.textContent = 'אלבומים';
+        const wrap = document.createElement('div'); wrap.className = 'js-albums js-exact';
         exact.slice(0, 3).forEach(a => {
           const row = document.createElement('button'); row.type = 'button'; row.className = 'row album-search-row';
           const image = document.createElement('img'); image.src = a.thumb || ''; image.alt = '';
@@ -3356,7 +3356,17 @@ async function runSearch(q, pill) {
           meta.append(title, artist); row.append(image, meta);
           row.addEventListener('click', () => openAlbum(a)); wrap.appendChild(row);
         });
-        box.prepend(wrap); box.prepend(h); return;
+        box.prepend(wrap); box.prepend(h);
+        // Exact-title albums own the top rows; verified studio/live albums
+        // that also contain the song still get the albums row below.
+        const rest = res.albums.filter(a => !exact.includes(a));
+        if (pill !== 'top' || !rest.length) return;
+        const h2 = document.createElement('h2'); h2.className = 'secttl js-albums'; h2.textContent = 'אלבומים נוספים';
+        box.appendChild(h2);
+        const wrap2 = document.createElement('div'); wrap2.className = 'hscroll js-albums';
+        rest.slice(0, 10).forEach(a => wrap2.appendChild(albumCardEl(a)));
+        box.appendChild(wrap2);
+        return;
       }
       if (pill !== 'top') return;
       const h = document.createElement('h2'); h.className = 'secttl js-albums'; h.textContent = 'אלבומים';
