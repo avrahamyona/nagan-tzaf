@@ -3,12 +3,26 @@
 const albumSearchBeforeMembership=searchPlaylists;
 function membershipKey(s){return normTxt(String(s||'').replace(/\([^)]*\)|\[[^\]]*\]/g,'').replace(/\s*[|｜].*$/,'').replace(/ - Topic$| - הערוץ הרשמי$|official channel/gi,'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim();}
 function membershipTitle(t){let title=String(t.title||'');const artist=membershipKey(t.artist);const parts=title.split(/\s+[-–]\s+/);if(parts.length>1&&membershipKey(parts[0])===artist)title=parts.slice(1).join(' - ');return membershipKey(title);}
+const lyricHitCache=new Map();
+const searchLyricsBeforeCache=searchLyrics;
+searchLyrics=function(q){const k=String(q||'').trim().toLowerCase();const h=lyricHitCache.get(k);if(h&&Date.now()-h.t<5*60*1000)return Promise.resolve(h.r);return searchLyricsBeforeCache(q).then(r=>{lyricHitCache.set(k,{t:Date.now(),r});if(lyricHitCache.size>60)lyricHitCache.delete(lyricHitCache.keys().next().value);return r;});};
+async function lyricIdentity(q){
+ // A lyric hit names the true song behind a lyric-line query ("מי זה מחוץ
+ // לחלון"): its title+artist seed the same membership verification, so the
+ // original album surfaces even when no result carries the query as a title.
+ try{
+  const hits=await searchLyrics(q);
+  const h=(hits||[]).find(x=>x&&x.title&&x.artist);
+  if(!h)return null;
+  return {title:membershipKey(h.title),artist:membershipKey(h.artist),artistRaw:String(h.artist||'').replace(/ - Topic$/i,''),seedCh:'',ids:new Set()};
+ }catch{return null;}
+}
 async function songSearchIdentity(q){
  const key=membershipKey(q);
  let tracks;try{tracks=await searchMusicCached(q);}catch{return {unavailable:true};}
  if(tracks.some(t=>membershipKey(t.artist)===key))return null;
  const exact=tracks.filter(t=>{const title=membershipTitle(t),artist=membershipKey(t.artist);return title&&[title,artist+' '+title,title+' '+artist].includes(key);});
- if(!exact.length)return null;
+ if(!exact.length)return lyricIdentity(q);
  // Search ranking chooses the intended recording; never join same-title songs by another artist.
  const seed=exact.find(t=>t.musicCatalog)||exact[0];return {title:membershipTitle(seed),artist:membershipKey(seed.artist),artistRaw:String(seed.artist||'').replace(/ - Topic$/i,''),seedCh:seed.ch||'',ids:new Set(exact.filter(t=>membershipKey(t.artist)===membershipKey(seed.artist)).map(t=>t.id))};
 }

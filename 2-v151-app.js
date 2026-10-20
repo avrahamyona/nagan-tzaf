@@ -81,6 +81,8 @@ async function searchMusic(q, filter = 'music_songs') {
 }
 
 function normTxt(s) { return String(s || '').toLowerCase().replace(/[\u0591-\u05C7]/g, '').replace(/["'\u201C\u201D\u05F4\u05F3.,!?:;()\[\]\-]/g, ' ').replace(/\s+/g, ' ').trim(); }
+const nonStudioRe = /מחרוזת|מדלי|medley|קאבר|cover|קריוקי|karaoke|instrumental|אינסטרומנטלי/i;
+const liveVerRe = /\blive\b|הופעה|בהופעה|אקוסטי|acoustic|unplugged/i;
 function scoreTrack(t, q) {
   const nq = normTxt(q); if (!nq) return 0;
   const nt = normTxt(t.title), na = normTxt(t.artist);
@@ -93,6 +95,11 @@ function scoreTrack(t, q) {
   for (const w of words) { if (nt.includes(w)) { hits++; s += 12; } else if (na.includes(w)) s += 4; }
   if (words.length && hits === words.length) s += 40;
   if (na && nq.includes(na)) s += 15;
+  // The official studio recording leads: medleys, covers, karaoke and
+  // instrumentals sink below it; live/acoustic versions sink mildly.
+  if (!nonStudioRe.test(q) && nonStudioRe.test(t.title)) s -= 70;
+  if (!liveVerRe.test(q) && liveVerRe.test(t.title)) s -= 25;
+  if (/ - Topic$/i.test(t.artist || '')) s += 25;
   return s;
 }
 /* search cache: repeat/rephrased queries feel instant (5 min TTL) */
@@ -3280,18 +3287,50 @@ async function runSearch(q, pill) {
     const res = {};
     let songsDone = false, lyricsDone = false, searchFailed = false;
     const clearLoading = () => { if (box.querySelector('.js-loading')) box.replaceChildren(); };
+    let recallRan = false;
+    const lyricSongRecall = async () => {
+      if (recallRan || seq !== searchSeq) return;
+      recallRan = true;
+      if (pill !== 'top' && pill !== 'songs') return;
+      const top = (res.lyrics || [])[0];
+      if (!top || !top.title || !top.artist) return;
+      const nt = normTxt(top.title); if (!nt) return;
+      const titleHits = t => { const x = normTxt(t.title); return x && (x.includes(nt) || nt.includes(x)); };
+      if ((res.songs || []).some(titleHits)) return;
+      try {
+        const cands = await within(searchMusic(top.artist + ' ' + top.title), 9000);
+        const good = (cands || []).filter(titleHits);
+        const best = good.find(t => !nonStudioRe.test(t.title)) || good[0];
+        if (best && seq === searchSeq) { res.songs = [best, ...(res.songs || [])]; paintSearchSongs(); }
+      } catch {}
+    };
     const done = () => {
       if (seq !== searchSeq || !songsDone || !lyricsDone) return;
       clearLoading();
       if (searchFailed && !box.children.length) { box.innerHTML = '<div class="empty"><p>החיפוש לא זמין כרגע. נסה שוב מאוחר יותר.</p></div>'; return; }
       if (!box.children.length) box.innerHTML = '<div class="empty"><p>לא נמצאו תוצאות. נסו ניסוח אחר, או הדביקו קישור יוטיוב.</p></div>';
+      lyricSongRecall();
     };
     Object.entries(jobs).forEach(([k, p]) => Promise.resolve(p).then(r => {
       if (seq !== searchSeq) return;
       res[k] = r || [];
       clearLoading();
       if (k === 'songs') { songsDone = true; paintSearchSongs(); }
-      if (k === 'lyrics') { lyricsDone = true; paintSearchLyrics(); }
+      if (k === 'lyrics') {
+        lyricsDone = true; paintSearchLyrics();
+        // The lyric hit names the real artist behind a lyric-line query;
+        // the artist card follows it when the raw channel search guessed wrong.
+        const topLyr = (res.lyrics || [])[0];
+        if (topLyr && topLyr.artist && pill === 'top') {
+          searchChannels(topLyr.artist).then(cs => {
+            if (seq !== searchSeq || !cs.length) return;
+            const want = membershipKey(topLyr.artist), old = $('resArtistHit');
+            if (old && membershipKey(old.textContent) === want) return;
+            const ah = artistHit(cs[0]); ah.id = 'resArtistHit';
+            if (old) old.replaceWith(ah); else box.prepend(ah);
+          }).catch(() => {});
+        }
+      }
       if (k === 'artists' && pill === 'top' && res.artists.length && !$('resArtistHit')) {
         const ah = artistHit(res.artists[0]); ah.id = 'resArtistHit';
         const albumRows = box.querySelector('.js-albums');
