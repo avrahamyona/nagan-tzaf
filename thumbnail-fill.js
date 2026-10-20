@@ -1,3 +1,20 @@
+// v212: use original image URLs only for known proxy image hosts.
+function coverImageURL(src){
+ if(typeof src!=='string')return '';
+ try{const u=new URL(src),host=u.searchParams.get('host');
+ if(u.hostname==='proxy.piped.private.coffee'&&['yt3.googleusercontent.com','lh3.googleusercontent.com','yt3.ggpht.com','i.ytimg.com','i9.ytimg.com'].includes(host)){
+ u.searchParams.delete('host');return 'https://'+host+u.pathname+u.search;
+ }}catch{}return src;
+}
+function trackCover(t){return coverImageURL(t?.thumb||t?.thumbnail||t?.album?.thumb)||thumb(t?.id);}
+const streamBeforeCovers=mapStream;
+mapStream=function(item){return {...streamBeforeCovers(item),thumb:coverImageURL(item.thumbnail||'')};};
+const albumBeforeCovers=mapAlbum;
+mapAlbum=function(item){const album=albumBeforeCovers(item);album.thumb=coverImageURL(album.thumb);return album;};
+const rowBeforeCovers=trackRow;
+trackRow=function(track,options){const row=rowBeforeCovers(track,options);const image=row.querySelector('img');if(image&&trackCover(track))image.src=trackCover(track);return row;};
+const artistHitBeforeCovers=artistHit;
+artistHit=function(artist){return artistHitBeforeCovers({...artist,avatar:coverImageURL(artist.avatar)});};
 // YouTube HQ thumbnails are 4:3 files with baked-in black bars around 16:9 content.
 // Use the bar-free 16:9 source and existing frame-specific cover crops everywhere.
 function cleanThumbnailURL(src){return coverImageURL(src).replace(/(i\.ytimg\.com\/vi\/[\w-]+\/)hqdefault\.jpg/g,'$1mqdefault.jpg');}
