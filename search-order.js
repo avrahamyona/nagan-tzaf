@@ -22,9 +22,17 @@ async function songSearchIdentity(q){
  let tracks;try{tracks=await searchMusicCached(q);}catch{return {unavailable:true};}
  if(tracks.some(t=>membershipKey(t.artist)===key))return null;
  const exact=tracks.filter(t=>{const title=membershipTitle(t),artist=membershipKey(t.artist);return title&&[title,artist+' '+title,title+' '+artist].includes(key);});
- if(!exact.length)return lyricIdentity(q);
+ // v217: a lyric hit names the true song behind a lyric-line query; when the
+ // query contains the lyric title it beats exact-title covers/medleys whose
+ // upload title merely embeds the query ("מי זה מחזיק לך את היד" קאבר).
+ const studio=exact.filter(t=>!nonStudioRe.test(String(t.title||'')));
+ if(!studio.length){
+  const lyr=await lyricIdentity(q);
+  if(!exact.length)return lyr;
+  if(lyr&&lyr.title&&key.includes(lyr.title))return lyr;
+ }
  // Search ranking chooses the intended recording; never join same-title songs by another artist.
- const seed=exact.find(t=>t.musicCatalog)||exact[0];return {title:membershipTitle(seed),artist:membershipKey(seed.artist),artistRaw:String(seed.artist||'').replace(/ - Topic$/i,''),seedCh:seed.ch||'',ids:new Set(exact.filter(t=>membershipKey(t.artist)===membershipKey(seed.artist)).map(t=>t.id))};
+ const seed=studio.find(t=>t.musicCatalog)||studio[0]||exact.find(t=>t.musicCatalog)||exact[0];return {title:membershipTitle(seed),artist:membershipKey(seed.artist),artistRaw:String(seed.artist||'').replace(/ - Topic$/i,''),seedCh:seed.ch||'',ids:new Set(exact.filter(t=>membershipKey(t.artist)===membershipKey(seed.artist)).map(t=>t.id))};
 }
 const liveAlbumRe=/\blive\b|הופעה|מופע|קונצרט/i;
 // The same singer appears in Hebrew on albums and in English on recordings
@@ -65,14 +73,16 @@ searchPlaylists=async function(q,filter='music_albums'){
       ||(identity.seedCh&&album.artistId===identity.seedCh)
       ||await sameArtistChannel(raw,identity.artistRaw)){match=t;break;}
    }
-   if(match)found.push({index,live:liveAlbumRe.test(String(match.title))||liveAlbumRe.test(String(album.title))?1:0,album:{...album,matchedSongId:match.id,matchedSongTitle:match.title}});
+   if(match)found.push({index,n:tracks.length,live:liveAlbumRe.test(String(match.title))||liveAlbumRe.test(String(album.title))?1:0,album:{...album,matchedSongId:match.id,matchedSongTitle:match.title}});
   }
  }));
  // The song's original album (exact title match) first, then other studio
  // albums, then live albums/performances, each group in search order. One
  // combined albums row: the flag tells the painter to skip exact-title rows.
  const key2=normTxt(q);
- const out=found.sort((a,b)=>(normTxt(b.album.title)===key2)-(normTxt(a.album.title)===key2)||a.live-b.live||a.index-b.index).map(x=>x.album);
+ // v217: between verified studio albums the smaller tracklist is the original
+ // release (a part/EP, not the later compilation), so it leads the row.
+ const out=found.sort((a,b)=>(normTxt(b.album.title)===key2)-(normTxt(a.album.title)===key2)||a.live-b.live||(a.n||99)-(b.n||99)||a.index-b.index).map(x=>x.album);
  out.songQuery=true;
  return out;
 };

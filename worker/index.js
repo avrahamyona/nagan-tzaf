@@ -203,6 +203,19 @@ function parseVideoTitle(t, uploader) {
   return t ? { track: t, artist: uploader || '' } : null;
 }
 
+// v217: LRCLIB rate-limits with bursts of 503s; a short retry loop keeps the
+// lyric pipeline stable without slowing the healthy path.
+async function lrclibGet(u) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(7000) });
+      if (r.ok) return await r.json();
+    } catch {}
+    await new Promise(s => setTimeout(s, 500 * (i + 1)));
+  }
+  return null;
+}
+
 async function lyricsSearch(url) {
   const q = (url.searchParams.get('q') || '').trim();
   if (!q) return json({ error: 'q required' }, 400);
@@ -220,7 +233,8 @@ async function lyricsSearch(url) {
         const items = (j.items || []).filter(it => it.type === 'stream').slice(0, 8);
         for (const it of items) {
           const c = parseVideoTitle(String(it.title || ''), String(it.uploaderName || ''));
-          if (c && c.track) cands.push(c);
+          const vid = (String(it.url || '').match(/[?&]v=([A-Za-z0-9_-]{11})/) || [])[1] || '';
+          if (c && c.track) cands.push({ ...c, id: vid, dur: Number(it.duration) || 0 });
         }
         if (items.length) break;
       } catch (e) { dbg['piped_' + base.split('//')[1]] = String(e); }
@@ -228,8 +242,7 @@ async function lyricsSearch(url) {
   }
   // B) LRCLIB metadata search as extra candidates
   try {
-    const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
-    const arr = await r.json();
+    const arr = await lrclibGet('https://lrclib.net/api/search?q=' + encodeURIComponent(q));
     if (Array.isArray(arr)) for (const it of arr.slice(0, 4)) {
       if (it.trackName && it.artistName) cands.push({ track: it.trackName, artist: it.artistName });
     }
@@ -244,8 +257,7 @@ async function lyricsSearch(url) {
       const u = new URL('https://lrclib.net/api/search');
       u.searchParams.set('track_name', c.track);
       if (c.artist) u.searchParams.set('artist_name', c.artist);
-      const r = await fetch(u);
-      const arr = await r.json();
+      const arr = await lrclibGet(u.toString());
       if (!Array.isArray(arr)) continue;
       const hit = arr.find(it => {
         const lyr = (it.plainLyrics || '').toLowerCase();
@@ -254,7 +266,7 @@ async function lyricsSearch(url) {
       if (hit) {
         const lines = (hit.plainLyrics || '').split('\n').map(s => s.trim()).filter(Boolean);
         const line = lines.find(l => words.every(x => l.toLowerCase().includes(x)));
-        if (line) out.push({ title: hit.trackName, artist: hit.artistName, line });
+        if (line) out.push({ title: hit.trackName, artist: hit.artistName, line, id: c.id || '', dur: c.dur || 0 });
       }
     } catch {}
   }

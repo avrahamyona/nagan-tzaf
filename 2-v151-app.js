@@ -3296,11 +3296,21 @@ async function runSearch(q, pill) {
       if (!top || !top.title || !top.artist) return;
       const nt = normTxt(top.title); if (!nt) return;
       const titleHits = t => { const x = normTxt(t.title); return x && (x.includes(nt) || nt.includes(x)); };
-      if ((res.songs || []).some(titleHits)) return;
+      // v217: a cover/medley whose upload title embeds the lyric title does not
+      // count as the song being present - the studio original is still missing.
+      const studioHit = t => titleHits(t) && !nonStudioRe.test(String(t.title || '')) && !nonStudioRe.test(String(t.artist || ''));
+      if ((res.songs || []).some(studioHit)) return;
       try {
-        const cands = await within(searchMusic(top.artist + ' ' + top.title), 9000);
-        const good = (cands || []).filter(titleHits);
-        const best = good.find(t => !nonStudioRe.test(t.title)) || good[0];
+        // v217: the lyric hit already carries the source video - seed the
+        // original recording directly, without another flaky search round.
+        let best = null;
+        if (top.id) best = { id: top.id, title: top.title, artist: top.artist, dur: Number(top.dur) || 0, ch: '' };
+        if (!best) {
+          const cands = await within(searchMusic(top.artist + ' ' + top.title), 9000);
+          const good = (cands || []).filter(titleHits);
+          const wantA = normTxt(top.artist);
+          best = good.find(t => !nonStudioRe.test(t.title) && wantA && normTxt(t.artist).includes(wantA)) || good.find(t => !nonStudioRe.test(t.title)) || good[0];
+        }
         if (best && seq === searchSeq) { res.songs = [best, ...(res.songs || [])]; paintSearchSongs(); }
       } catch {}
     };
