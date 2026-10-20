@@ -206,12 +206,12 @@ function parseVideoTitle(t, uploader) {
 // v217: LRCLIB rate-limits with bursts of 503s; a short retry loop keeps the
 // lyric pipeline stable without slowing the healthy path.
 async function lrclibGet(u) {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     try {
-      const r = await fetch(u, { signal: AbortSignal.timeout(7000) });
+      const r = await fetch(u, { signal: AbortSignal.timeout(5000) });
       if (r.ok) return await r.json();
     } catch {}
-    await new Promise(s => setTimeout(s, 500 * (i + 1)));
+    await new Promise(s => setTimeout(s, 400 * (i + 1)));
   }
   return null;
 }
@@ -249,8 +249,10 @@ async function lyricsSearch(url) {
   } catch {}
   // strict confirm against LRCLIB lyric text: every query word must appear, and one line must contain them all
   const out = []; const seen = new Set();
+  const t0 = Date.now();
   for (const c of cands) {
     if (out.length >= 3) break;
+    if (Date.now() - t0 > 12000) break; // v217: bound total LRCLIB wait under client timeouts
     const key = (c.artist + '|' + c.track).toLowerCase();
     if (seen.has(key)) continue; seen.add(key);
     try {
