@@ -54,9 +54,11 @@ function decorateLyricResults(){
  for(const row of document.querySelectorAll('#resBody .lyrrow:not([data-lyric-design])')){
  row.dataset.lyricDesign='1';const title=row.querySelector('.t')?.textContent,artist=row.querySelector('.a')?.textContent;
  if(!title||!artist)continue;
- const note=row.querySelector('.lyrnote');if(note){note.replaceChildren();const img=document.createElement('img');img.alt='';img.src='./icon-192.png';note.append(img);}
+ const note=row.querySelector('.lyrnote');if(note){note.replaceChildren();const img=document.createElement('img');img.alt='עטיפה לא זמינה';img.hidden=true;note.append(img);}
  const subtitle=row.querySelector('.a');subtitle.textContent='שיר · '+artist;
- let track=null;lyricResultTrack(title,artist).then(t=>{track=t;if(t&&note)note.querySelector('img').src=sqThumb(t.id);});
+ let track=null;const knownId=lyricIndex.get(lyricKey(artist)+'|'+lyricKey(title))?.id;
+ if(knownId&&note){const img=note.querySelector('img');img.src=thumb(knownId);img.alt='';img.hidden=false;}
+ lyricResultTrack(title,artist).then(t=>{track=t;if(t&&note){const img=note.querySelector('img');img.src=trackCover(t);img.alt='';img.hidden=false;}});
  row.addEventListener('click',async e=>{e.stopImmediatePropagation();const t=track||await lyricResultTrack(title,artist);if(t)playQueue([t],0);else toast('לא נמצאה התאמת שיר מאומתת');},true);
  }
 }
