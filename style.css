@@ -1198,3 +1198,16 @@ body:has(#songSheet.open) #scrim { z-index:31; }
   html.dock-compact.dock-search-active #tabbar .tabbtn[data-tab="listen"] span { display: none; }
   html.dock-compact.dock-search-active #tabbar .tabglass { opacity: 0; }
 }
+
+/* clickable arrows for the search albums carousel */
+.hsw { position: relative; }
+.hsw-btn {
+  position: absolute; top: 63px; z-index: 4; width: 36px; height: 36px;
+  border-radius: 50%; border: 0; padding: 0 0 2px;
+  background: rgba(18,18,22,.82); color: #fff; font-size: 22px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,.45); backdrop-filter: blur(6px);
+}
+.hsw-btn:hover { background: rgba(48,48,58,.95); }
+.hsw-btn.prev { right: 4px; }
+.hsw-btn.next { left: 4px; }
