@@ -1,39 +1,66 @@
-// v218: clickable right/left arrows on the search albums carousel.
-// A desktop mouse can't drag an overflow-x row whose scrollbar is hidden,
-// so wrap .hscroll.js-albums rows with explicit edge buttons that page the
-// row. Applied by observer so async search paints are covered.
+// v219: right/left arrows for the search albums carousel, in the exact
+// pattern used by every other horizontal section on the site (.asec-arrow
+// pair at the far end of the section heading, desktop only, edge-disabled).
+// The search albums row is painted by 2-v151-app.js without a section
+// wrapper, so this observer enhances it in place whenever it appears.
 (() => {
-  const addArrows = (scroller) => {
-    if (scroller.dataset.hswDone) return;
-    scroller.dataset.hswDone = '1';
-    const holder = document.createElement('div');
-    holder.className = 'hsw js-albums';
-    const mk = (cls, label, glyph, delta) => {
+  const CHEV_LEFT = 'M15 5l-7 7 7 7';   // points left, reveals more (RTL overflow side)
+  const CHEV_RIGHT = 'M9 5l7 7-7 7';    // points right, goes back
+  const svg = (d) => '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  const enhance = (scroller) => {
+    if (scroller.dataset.albumArrowsDone) return;
+    let heading = scroller.previousElementSibling, hops = 0;
+    while (heading && hops < 4 && !heading.matches('h2.secttl.js-albums')) {
+      if (heading.matches('.hscroll.js-albums')) { heading = null; break; }
+      heading = heading.previousElementSibling; hops++;
+    }
+    if (!heading) return;
+    scroller.dataset.albumArrowsDone = '1';
+    heading.classList.add('js-albums-head');
+
+    const arrows = document.createElement('div');
+    arrows.className = 'asec-arrows';
+    const mk = (chev, contentDirection, label) => {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'hsw-btn ' + cls;
-      b.setAttribute('aria-label', label);
-      b.innerHTML = glyph;
+      b.type = 'button'; b.className = 'asec-arrow';
+      b.dataset.contentDirection = contentDirection;
+      b.style.direction = 'ltr';
+      b.innerHTML = svg(chev);
+      b.setAttribute('aria-label', label + ' - ' + heading.textContent.trim());
       b.addEventListener('click', () => {
-        const rtl = getComputedStyle(scroller).direction === 'rtl';
-        const amount = Math.max(scroller.clientWidth - 120, 260);
-        scroller.scrollBy({ left: (rtl ? -1 : 1) * delta * amount, behavior: 'smooth' });
+        // Same convention as home sections: left-pointing reveals more cards.
+        const amount = Math.max(250, scroller.clientWidth * .8);
+        scroller.scrollBy({ left: (contentDirection === 'right' ? -1 : 1) * amount, behavior: 'smooth' });
       });
+      arrows.appendChild(b);
       return b;
     };
-    const prev = mk('prev', 'אלבומים קודמים', '&#8250;', -1);
-    const next = mk('next', 'עוד אלבומים', '&#8249;', 1);
-    scroller.replaceWith(holder);
-    holder.append(scroller, prev, next);
-    const update = () => {
-      const over = scroller.scrollWidth > scroller.clientWidth + 8;
-      prev.style.display = next.style.display = over ? 'flex' : 'none';
+    const more = mk(CHEV_LEFT, 'right', 'עוד אלבומים');
+    const back = mk(CHEV_RIGHT, 'left', 'אלבומים קודמים');
+
+    const updateEdges = () => {
+      const viewport = scroller.getBoundingClientRect();
+      const cards = [...scroller.children].map(x => x.getBoundingClientRect()).filter(r => r.width > 0);
+      const hiddenLeft = cards.some(r => r.left < viewport.left - 2);
+      const hiddenRight = cards.some(r => r.right > viewport.right + 2);
+      [more, back].forEach(button => {
+        const movesLeft = button.dataset.contentDirection === 'left';
+        button.disabled = !(movesLeft ? hiddenRight : hiddenLeft);
+        button.setAttribute('aria-disabled', String(button.disabled));
+      });
     };
-    requestAnimationFrame(update);
-    window.addEventListener('resize', update);
+    scroller.addEventListener('scroll', updateEdges, { passive: true });
+    new ResizeObserver(updateEdges).observe(scroller);
+    new MutationObserver(updateEdges).observe(scroller, { childList: true });
+    requestAnimationFrame(updateEdges);
+
+    heading.appendChild(arrows);
   };
+
   const scan = (root) => {
-    if (root.matches?.('.hscroll.js-albums')) addArrows(root);
-    root.querySelectorAll?.('.hscroll.js-albums').forEach(addArrows);
+    if (root.matches?.('.hscroll.js-albums')) enhance(root);
+    root.querySelectorAll?.('.hscroll.js-albums').forEach(enhance);
   };
   new MutationObserver((muts) => {
     for (const m of muts) m.addedNodes.forEach(scan);
