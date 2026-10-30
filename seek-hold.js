@@ -30,7 +30,7 @@
   if(s.button.hasPointerCapture?.(s.pointer))try{s.button.releasePointerCapture(s.pointer);}catch{}
   if(!s.long&&commit)s.tap();
  }
- const controls=[['cPrev',-1,()=>advance(-1,false)],['cNext',1,()=>next()],['queuePrev',-1,()=>advance(-1,false)],['queueNext',1,()=>next()],['cBack10',-1,()=>seek(position()-10)],['cFwd10',1,()=>seek(position()+10)]];
+ const controls=[['cPrev',-1,()=>advance(-1,false)],['cNext',1,()=>next()],['queuePrev',-1,()=>advance(-1,false)],['queueNext',1,()=>next()],['cBack10',-1,()=>seek(position()-jumpSecs(-1))],['cFwd10',1,()=>seek(position()+jumpSecs(1))]];
  for(const[id,direction,tap]of controls){
   const button=$(id);if(!button)continue;
   button.addEventListener('pointerdown',e=>{
