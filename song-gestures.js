@@ -21,8 +21,9 @@ openSongSheet=function(track,options={}){
  openBeforeGestures(track,options);
  setIcon($('ssFav'),state.fav[track.id]?'star':'star');$('ssFav').querySelector('span').textContent=state.fav[track.id]?'הסרה מהמועדפים':'הוספה למועדפים';
  $('songShortcutFav').querySelector('span').textContent=state.fav[track.id]?'הסרה מהמועדפים':'הוספה למועדפים';
- $('ssAlbum').disabled=!track.album?.plId;$('ssAlbum').classList.remove('hidden');
- if(!track.album?.plId)verifiedAlbumFor(track).then(album=>{if(sheetTrack?.id===track.id&&album?.plId){$('ssAlbum').disabled=false;sheetOpts.verifiedAlbum=album;}});
+ $('songShortcutFav').classList.toggle('hidden',!!track.pod);
+ $('ssAlbum').disabled=!track.album?.plId;if(!track.pod)$('ssAlbum').classList.remove('hidden');
+ if(!track.pod&&!track.album?.plId)verifiedAlbumFor(track).then(album=>{if(sheetTrack?.id===track.id&&album?.plId){$('ssAlbum').disabled=false;sheetOpts.verifiedAlbum=album;}});
  const sheet=$('songSheet');sheet.classList.add('apple-song-menu');
  // Keep the entire action panel inside the viewport, with a lifted source preview.
  // v152: anchored opens (three-dots button) keep the position openSongSheet computed; only reset for legacy unanchored opens.
