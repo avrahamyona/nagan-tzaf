@@ -1444,8 +1444,8 @@ function openSongSheet(t, opts = {}) {
   $('songSheetHead').querySelector('.a').textContent = t.artist;
   setIcon($('ssFav'), state.fav[t.id] ? 'heart-fill' : 'heart');
   $('ssFav').querySelector('span').textContent = state.fav[t.id] ? 'בטל אהבתי' : 'אהבתי';
-  $('ssArtist').classList.toggle('hidden', !t.artist);
-  $('ssAlbum').classList.toggle('hidden', !t.album?.plId);
+  $('ssArtist').classList.toggle('hidden', !t.artist || !!t.pod);
+  $('ssAlbum').classList.toggle('hidden', !!t.pod || !t.album?.plId);
   $('ssAlbumName').textContent=t.album?.title||'';
   if (!t.pod && !t.album?.plId) verifiedAlbumFor(t).then(a=>{if(sheetTrack?.id!==t.id || !a)return; $('ssAlbum').classList.remove('hidden'); $('ssAlbumName').textContent=a.title; sheetOpts.verifiedAlbum=a;});
   $('ssQueueNext').classList.toggle('hidden', !current());
