@@ -1228,3 +1228,8 @@ body:has(#songSheet.open) #scrim { z-index:31; }
 textarea.codebox { resize: vertical; }
 .sheetexpl { margin: 4px 18px 0; font-size: 13px; }
 .sleepnote { margin: 0 18px 6px; font-size: 13px; }
+
+/* ---------- v222: podcast defect repairs ---------- */
+.podsearchrow input { min-width: 0; }
+.podsearchrow .ppill { white-space: nowrap; min-width: 56px; text-align: center; }
+.podheroactions .ppill { white-space: nowrap; }
