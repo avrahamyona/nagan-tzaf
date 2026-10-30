@@ -30,6 +30,7 @@ audioEl.addEventListener('playing',prewarmUpcomingDirect);
 const loadBeforeSpeed=loadTrack;
 loadTrack=function(track,options={}){
  loadBeforeSpeed(track,options);
+ if(track&&track.pod)return;
  if(!track||videoMode||options.autoplay===false)return;
  const generation=playGen;
  const pending=()=>generation===playGen&&!videoMode&&!userPaused&&streamConnecting&&!(audioEl.readyState>=2&&!audioEl.paused);
