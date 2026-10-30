@@ -95,6 +95,7 @@ const loadBeforeHealth=loadTrack;
 loadTrack=function(track,options={}){
  stopFastDeadline(activeDirectAttempt);stopAttemptTimer(activeDirectAttempt);if(activeDirectAttempt)cancelDirectDiscovery(activeDirectAttempt.track.id);
  if(!track||videoMode){activeDirectAttempt=null;return loadBeforeHealth(track,options);}
+ if(track&&track.pod){activeDirectAttempt=null;return loadBeforeHealth(track,options);}
  clearTimeout(ytRetryTimer);pendingLoad=null;pendingSeek.delete(audioEl);audioEl.pause();audioEl.removeAttribute('src');audioEl.load();
  const opts={autoplay:true,...options};playGen++;lastCur=-1;streamConnecting=true;engine='audio';userPaused=opts.autoplay===false;
  const a={track,options:opts,generation:playGen,urls:new Set,versions:null,sourcesTried:false,recovering:false,startedAt:performance.now()};activeDirectAttempt=a;audioEl.dataset.vid=track.id;paintEngineBadge();
