@@ -25,6 +25,7 @@ function beginDirectSource(track,url,options,generation){
  else{streamConnecting=false;syncPlayUI(true);}
 }
 loadTrack=function(track,options={}){
+ if(track&&track.pod&&typeof podLoadTrack==='function'){podLoadTrack(track,options);return;}
  if(!track)return;if(videoMode){useClipEngine(track,options.startAt,options.autoplay!==false);return;}
  clearTimeout(ytRetryTimer);clearTimeout(directLoadTimeout);pendingLoad=null;try{yt.stopVideo();}catch{}
  const opts={autoplay:true,...options};restoreAttempt=!!(opts.startAt&&opts.autoplay);lastCur=-1;streamConnecting=true;engine='audio';playGen++;directFallbackUsed=false;directSameRetried=false;directFallbackPending=false;audioRetry=0;window._streamDiag='direct-only';
