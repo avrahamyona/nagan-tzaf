@@ -596,17 +596,22 @@ function scheduleAudioRetry(t) {
     resolveAudioUrl(t.id).then(url => {
       if (videoMode || engine !== 'yt' || !current() || current().id !== t.id) return;
       if (!url) { scheduleAudioRetry(t); return; }
-      const pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
-      const playing = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
-      try { yt.stopVideo(); } catch {}
-      streamConnecting = true; engine = 'audio'; playGen++;
-      audioEl.dataset.vid = t.id; paintEngineBadge();
-      setAudioSrc(url);
-      try { audioEl.currentTime = pos; } catch {}
-      if (playing) audioEl.play().catch(() => { streamConnecting = false; syncPlayUI(true); });
-      else { streamConnecting = false; syncPlayUI(true); }
+      switchYtToAudio(t, url);
     });
   }, 45000);
+}
+// Moves the playing YouTube fallback onto the direct audio stream at the same
+// position. Also used before AirPlay so the receiver gets audio only.
+function switchYtToAudio(t, url) {
+  const pos = ytReady && yt.getCurrentTime ? yt.getCurrentTime() : 0;
+  const playing = ytReady && yt.getPlayerState() === YT.PlayerState.PLAYING;
+  try { yt.stopVideo(); } catch {}
+  streamConnecting = true; engine = 'audio'; playGen++;
+  audioEl.dataset.vid = t.id; paintEngineBadge();
+  setAudioSrc(url);
+  try { audioEl.currentTime = pos; } catch {}
+  if (playing) audioEl.play().catch(() => { streamConnecting = false; syncPlayUI(true); });
+  else { streamConnecting = false; syncPlayUI(true); }
 }
 function useYtEngine(t, startAt) {
   if (videoMode) { clipUnavailable(); return; }
@@ -1002,7 +1007,7 @@ function updateMediaSession() {
   const setMeta = artwork => {
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: aviCleanTitle(t.title), artist: aviCleanArtist(t.artist), album: 'Avi Music', artwork,
+        title: aviCleanTitle(t.title), artist: aviCleanArtist(t.artist), album: t.album?.title || 'Avi Music', artwork,
       });
     } catch {}
     registerMediaControls(); // iOS may reset its transport set after metadata changes.
@@ -1904,24 +1909,32 @@ $('cRepeat').addEventListener('click', () => {
 $('cLyrics').addEventListener('click', openLyrics);
 
 /* ---------- AirPlay / cast ---------- */
+// AirPlay from the <audio> element stays audio-only, so the receiver shows
+// the song's artwork and metadata (Media Session), Apple-Music-style. Never
+// route audio through the <video> element: the receiver then presents it as
+// a video, and playback used to stay stranded on the clip engine.
+[audioEl, clipEl].forEach(el => el.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
+  $('cCast').classList.toggle('on', !!(audioEl.webkitCurrentPlaybackTargetIsWireless || clipEl.webkitCurrentPlaybackTargetIsWireless));
+}));
 $('cCast').addEventListener('click', async () => {
   try {
-    // iOS Safari exposes AirPlay only on video elements
-    if (clipEl.webkitShowPlaybackTargetPicker) {
-      if (engine === 'audio' && audioEl.src && !videoMode) {
-        // route the current audio stream through the video element so AirPlay can pick it up
-        const pos = audioEl.currentTime || 0, wasPlaying = !audioEl.paused;
-        clipEl.dataset.vid = audioEl.dataset.vid;
-        clipEl.src = audioEl.src;
-        try { clipEl.currentTime = pos; } catch {}
-        audioEl.pause();
-        engine = 'clip'; paintEngineBadge();
-        if (wasPlaying) clipEl.play().catch(() => {});
-      } else if (engine === 'yt') {
-        toast('שידור זמין במצב שמע ישיר או קליפ');
+    if (audioEl.webkitShowPlaybackTargetPicker) {
+      if (videoMode) {
+        if (engine === 'clip' && clipEl.src) clipEl.webkitShowPlaybackTargetPicker();
+        else toast('שידור זמין כשקליפ מתנגן');
         return;
       }
-      clipEl.webkitShowPlaybackTargetPicker();
+      if ((engine === 'yt' || engine === 'yt-pending') && current()) {
+        // The YouTube fallback AirPlays as a video; switch to the direct
+        // audio stream first so the receiver gets the artwork screen.
+        const t = current();
+        toast('מחפש שמע ישיר לשידור…');
+        const url = await resolveAudioUrl(t.id);
+        if (!url) { toast('שמע ישיר לא זמין כרגע לשיר הזה'); return; }
+        if (videoMode || !current() || current().id !== t.id) return;
+        switchYtToAudio(t, url);
+      }
+      audioEl.webkitShowPlaybackTargetPicker();
       return;
     }
     const el = activeAudio() ? M() : null;
@@ -3870,3 +3883,4 @@ if ('serviceWorker' in navigator) {
   playQueue([t], 0);
   enrichTitle(t);
 })();
+
