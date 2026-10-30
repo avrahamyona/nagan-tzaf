@@ -30,14 +30,18 @@
     return { show: res.find(x => x.kind === 'podcast') || null, episodes: res.filter(x => x.kind === 'podcast-episode') };
   }
 
-  const epToTrack = (show, ep) => ({
-    id: 'pod:' + show.collectionId + ':' + ep.trackId,
-    title: ep.trackName || 'פרק',
-    artist: show.collectionName,
-    dur: Math.round((ep.trackTimeMillis || 0) / 1000),
-    ch: show.artistName || '',
-    pod: { url: ep.episodeUrl, art: show.art600 || show.art, show: show.collectionName, showId: show.collectionId, date: ep.releaseDate || '' },
-  });
+  const epToTrack = (show, ep) => {
+    const sid = show.collectionId ?? show.id;
+    const sname = show.collectionName ?? show.name;
+    return {
+      id: 'pod:' + sid + ':' + ep.trackId,
+      title: ep.trackName || 'פרק',
+      artist: sname,
+      dur: Math.round((ep.trackTimeMillis || 0) / 1000),
+      ch: show.artistName ?? show.artist ?? '',
+      pod: { url: ep.episodeUrl, art: show.art600 || show.art, show: sname, showId: sid, date: ep.releaseDate || '' },
+    };
+  };
   const showMeta = s => ({ id: s.collectionId, name: s.collectionName, artist: s.artistName || '', art: (s.artworkUrl600 || s.artworkUrl100 || '').replace('100x100', '600x600') });
 
   /* ---------- podcast view ---------- */
