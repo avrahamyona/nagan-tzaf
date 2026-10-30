@@ -1438,6 +1438,7 @@ function animateAlbumRoute(a) {
 let sheetTrack = null, sheetOpts = {};
 function openSongSheet(t, opts = {}) {
   sheetTrack = t; sheetOpts = opts;
+  ['ssShare','ssFav','ssAdd','ssStation','ssLyrics','ssArtist','ssLess'].forEach(id => $(id).classList.toggle('hidden', !!t.pod));
   $('songSheetHead').innerHTML = `<img src="${thumb(t.id)}" alt=""><div class="meta"><div class="t"></div><div class="a dim"></div></div>`;
   $('songSheetHead').querySelector('.t').textContent = t.title;
   $('songSheetHead').querySelector('.a').textContent = t.artist;
@@ -1446,7 +1447,7 @@ function openSongSheet(t, opts = {}) {
   $('ssArtist').classList.toggle('hidden', !t.artist);
   $('ssAlbum').classList.toggle('hidden', !t.album?.plId);
   $('ssAlbumName').textContent=t.album?.title||'';
-  if (!t.album?.plId) verifiedAlbumFor(t).then(a=>{if(sheetTrack?.id!==t.id || !a)return; $('ssAlbum').classList.remove('hidden'); $('ssAlbumName').textContent=a.title; sheetOpts.verifiedAlbum=a;});
+  if (!t.pod && !t.album?.plId) verifiedAlbumFor(t).then(a=>{if(sheetTrack?.id!==t.id || !a)return; $('ssAlbum').classList.remove('hidden'); $('ssAlbumName').textContent=a.title; sheetOpts.verifiedAlbum=a;});
   $('ssQueueNext').classList.toggle('hidden', !current());
   $('ssQueueLast').classList.toggle('hidden', !current());
   $('ssRemove').classList.toggle('hidden', !opts.onRemove);
