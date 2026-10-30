@@ -340,7 +340,8 @@ function vidFromUrl(s) {
   if (m) return m[1];
   return /^[A-Za-z0-9_-]{11}$/.test(s.trim()) ? s.trim() : '';
 }
-const thumb = (id, q) => `https://i.ytimg.com/vi/${id}/${q || 'mq'}default.jpg`;
+const podArtMap = {};
+const thumb = (id, q) => podArtMap[id] || `https://i.ytimg.com/vi/${id}/${q || 'mq'}default.jpg`;
 const sqThumb = (id, q) => `https://i.ytimg.com/vi/${id}/${q || 'hq'}default.jpg`;
 const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const fmtRem = (c, d) => '-' + fmt(Math.max(0, (d || 0) - (c || 0)));
@@ -376,6 +377,7 @@ function save() {
       shuffle: state.shuffle, repeat: state.repeat, autoNext: state.autoNext, volume: state.volume,
       fav: state.fav, favArtists: state.favArtists, albums: state.albums, lessSuggestions: state.lessSuggestions,
       history: state.history.slice(0, 60), playedHistory: state.playedHistory.slice(0, 60), station: state.station, resume: state.resume,
+      podLib: state.podLib, podPos: state.podPos,
     }));
   } catch {}
 }
@@ -664,8 +666,29 @@ function useClipEngine(t, startAt, autoplay) {
   });
 }
 
+// Podcast episodes are direct audio streams; the YouTube engine never sees them.
+function podLoadTrack(t, opts = {}) {
+  restoreAttempt = false;
+  clearTimeout(ytRetryTimer);
+  window._streamDiag = '';
+  lastCur = -1;
+  if (videoMode) videoMode = false;
+  streamConnecting = true; engine = 'audio'; playGen++;
+  audioEl.dataset.vid = t.id; paintEngineBadge();
+  audioRetry = 0;
+  podArtMap[t.id] = t.pod.art;
+  try { yt.stopVideo(); } catch {}
+  try { clipEl.pause(); clipEl.removeAttribute('src'); clipEl.load(); clipEl.style.display = 'none'; $('ytplayer').style.display = ''; } catch {}
+  setAudioSrc(t.pod.url);
+  const saved = (state.podPos || {})[t.id] || 0;
+  const startAt = opts.startAt || (t.dur && saved > t.dur * 0.95 ? 0 : saved);
+  seekWhenReady(audioEl, startAt);
+  if (opts.autoplay !== false) audioEl.play().catch((e) => { noteAutoplayBlock(e); streamConnecting = false; syncPlayUI(true); });
+  else { streamConnecting = false; syncPlayUI(true); }
+}
 function loadTrack(t, opts = {}) {
   if (!t) return;
+  if (t.pod) { podLoadTrack(t, opts); return; }
   restoreAttempt = !!(opts.startAt && opts.autoplay);
   clearTimeout(ytRetryTimer);
   window._streamDiag = '';
@@ -720,6 +743,7 @@ audioEl.addEventListener('error', () => {
   if (audioEl.error) window._streamDiag = (window._streamDiag || '') + ' elerr:' + audioEl.error.code;
   const t = current();
   if (!t || videoMode || audioEl.dataset.vid !== t.id) return;
+  if (t.pod) { onTrackError(); return; }
   if (audioRetry++ < 1) {
     resolveAudioUrl(t.id).then(url => {
       if (url && audioEl.dataset.vid === t.id && !videoMode) { setAudioSrc(url); audioEl.play().catch(() => {}); }
@@ -1018,7 +1042,7 @@ function updateMediaSession() {
     { src: thumb(t.id, 'mq'), sizes: '320x180', type: 'image/jpeg' },
     { src: thumb(t.id, 'hq'), sizes: '480x360', type: 'image/jpeg' },
   ]);
-  squareArtwork(t.id).then(art => {
+  (t.pod ? Promise.resolve([{ src: t.pod.art, sizes: '600x600', type: 'image/jpeg' }]) : squareArtwork(t.id)).then(art => {
     if (art && current() && current().id === t.id) setMeta(art);
   });
 }
@@ -1849,6 +1873,8 @@ $('pDots').addEventListener('click', () => { const t = current(); if (t) openSon
 $('pArtist').addEventListener('click', () => openSongDestinationSheet(current()));
 $('pTitle').addEventListener('click', () => openSongDestinationSheet(current()));
 // tap = +/-10s; long-press = 2x scrub (forward) / stepped rewind (back), restore on release
+// Podcasts jump 30s forward / 15s back (Apple Podcasts convention); music keeps 10s.
+const jumpSecs = dir => (current()?.pod ? (dir > 0 ? 30 : 15) : 10);
 function scrubHold(btn, dir) {
   let mode = null, pressTimer = null, rewTimer = null, longFired = false;
   const release = () => {
@@ -1878,8 +1904,8 @@ function scrubHold(btn, dir) {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => btn.addEventListener(ev, release));
   btn.addEventListener('click', e => {
     if (longFired) { longFired = false; e.stopImmediatePropagation(); e.preventDefault(); return; }
-    if (dir > 0) { if (activeAudio()) M().currentTime = Math.min(M().duration || 1e9, M().currentTime + 10); else if (ytReady) yt.seekTo(yt.getCurrentTime() + 10, true); }
-    else { if (activeAudio()) M().currentTime = Math.max(0, M().currentTime - 10); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - 10), true); }
+    if (dir > 0) { if (activeAudio()) M().currentTime = Math.min(M().duration || 1e9, M().currentTime + jumpSecs(1)); else if (ytReady) yt.seekTo(yt.getCurrentTime() + jumpSecs(1), true); }
+    else { if (activeAudio()) M().currentTime = Math.max(0, M().currentTime - jumpSecs(-1)); else if (ytReady) yt.seekTo(Math.max(0, yt.getCurrentTime() - jumpSecs(-1)), true); }
   });
 }
 scrubHold($('cBack10'), -1);
@@ -3884,3 +3910,29 @@ if ('serviceWorker' in navigator) {
   enrichTitle(t);
 })();
 
+/* ---------- hooks for avi-extras.js (podcasts / sleep timer / share codes) ---------- */
+function pausePlayback() {
+  userPaused = true;
+  try { audioEl.pause(); } catch {}
+  try { clipEl.pause(); } catch {}
+  try { if (ytReady) yt.pauseVideo(); } catch {}
+}
+const __origPaintNow = paintNow;
+paintNow = function (...args) {
+  __origPaintNow(...args);
+  const pod = !!current()?.pod;
+  $('cBack10')?.querySelector('use')?.setAttribute('href', pod ? '#i-back15' : '#i-back10');
+  $('cFwd10')?.querySelector('use')?.setAttribute('href', pod ? '#i-fwd30' : '#i-fwd10');
+};
+window.avi = {
+  state: () => state, save, current, playQueue, toast, openSheet, closeSheet,
+  renderLibrary, openLocalPlaylist, pausePlayback, switchTab, podArtMap,
+  plCtx: () => ({ kind: openPlKind, name: openPlName, tracks: openPlTracks ? openPlTracks() : [] }),
+  mediaInfo() {
+    const t = current();
+    if (!t) return null;
+    if (activeAudio()) return { id: t.id, cur: M().currentTime || 0, dur: M().duration || t.dur || 0, paused: M().paused, pod: !!t.pod };
+    if (ytReady && yt.getCurrentTime) return { id: t.id, cur: yt.getCurrentTime() || 0, dur: yt.getDuration() || t.dur || 0, paused: yt.getPlayerState() !== YT.PlayerState.PLAYING, pod: !!t.pod };
+    return { id: t.id, cur: 0, dur: t.dur || 0, paused: true, pod: !!t.pod };
+  },
+};
