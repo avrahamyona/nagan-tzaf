@@ -1,4 +1,4 @@
-/* avi-extras.js — v221: podcasts area, sleep timer, playlist share/join codes.
+/* avi-extras.js — v224: podcasts area (Apple Podcasts structure inside the podcasts tab), sleep timer, playlist share/join codes.
    Hooks into the core player through window.avi (exposed at the end of 2-v151-app.js). */
 (() => {
   if (!window.avi) return;
@@ -23,8 +23,8 @@
     if (!r.ok) throw new Error('http ' + r.status);
     return (await r.json()).results || [];
   }
-  async function loadShow(showId) {
-    const r = await fetch(ITUNES + '/lookup?id=' + encodeURIComponent(showId) + '&entity=podcastEpisode&limit=200&country=IL');
+  async function loadShow(showId, limit = 200) {
+    const r = await fetch(ITUNES + '/lookup?id=' + encodeURIComponent(showId) + '&entity=podcastEpisode&limit=' + limit + '&country=IL');
     if (!r.ok) throw new Error('http ' + r.status);
     const res = (await r.json()).results || [];
     return { show: res.find(x => x.kind === 'podcast') || null, episodes: res.filter(x => x.kind === 'podcast-episode') };
@@ -44,7 +44,7 @@
   };
   const showMeta = s => ({ id: s.collectionId, name: s.collectionName, artist: s.artistName || '', art: (s.artworkUrl600 || s.artworkUrl100 || '').replace('100x100', '600x600') });
 
-  /* ---------- podcast view ---------- */
+  /* ---------- podcast view (Apple Podcasts structure, scoped to the podcasts tab) ---------- */
   let podView = { mode: 'home', show: null, episodes: [], sortNew: true };
   const followed = id => st().podLib.some(x => x.id === id);
 
@@ -56,19 +56,85 @@
     return el;
   }
 
+  const secTitle = txt => { const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = txt; return h; };
+
+  // One episode row, shared by the home sections and the show page.
+  function epRow(show, ep, opts = {}) {
+    const t = epToTrack(show, ep);
+    window.avi.podArtMap[t.id] = t.pod.art;
+    const pos = st().podPos[t.id] || 0;
+    const left = pos > 5 && t.dur && pos < t.dur - 8 ? Math.max(0, t.dur - pos) : 0;
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'trackrow podrow';
+    row.innerHTML = `
+      <img class="podrowart" loading="lazy" src="${esc(t.pod.art || '')}" alt="">
+      <div class="podrowmeta">
+        <span class="t">${esc(t.title)}</span>
+        <span class="a dim">${opts.showName ? esc(t.artist) + ' · ' : ''}${fmtDate(ep.releaseDate)}${t.dur ? ' · ' + fmtDur(t.dur) : ''}${left ? ' · נשאר ' + fmtDur(left) : ''}</span>
+        ${!opts.noDesc && ep.description ? `<span class="d dim">${esc(String(ep.description).replace(/<[^>]+>/g, ' ').slice(0, 140))}</span>` : ''}
+      </div>
+      <svg class="podplay"><use href="#i-play"/></svg>`;
+    row.addEventListener('click', () => {
+      const queue = opts.queue || [t];
+      window.avi.playQueue(queue, Math.max(0, queue.findIndex(x => x.id === t.id)));
+    });
+    return row;
+  }
+
   function renderPodHome() {
     const box = $('podBody'); if (!box) return;
+    podView.mode = 'home';
     box.innerHTML = '';
-    if (st().podLib.length) {
-      const h = document.createElement('h2'); h.className = 'secttl'; h.textContent = 'עוקב אחרי';
+    const lib = st().podLib;
+    if (lib.length) {
+      const upH = secTitle('הבא בתור'); upH.hidden = true;
+      const upList = document.createElement('div'); upList.className = 'tracklist';
+      const recH = secTitle('פרקים אחרונים'); recH.hidden = true;
+      const recList = document.createElement('div'); recList.className = 'tracklist';
+      const folH = secTitle('תכניות במעקב');
       const grid = document.createElement('div'); grid.className = 'podgrid';
-      st().podLib.forEach(s => grid.appendChild(podCard(s)));
-      box.append(h, grid);
+      lib.forEach(s => grid.appendChild(podCard(s)));
+      box.append(upH, upList, recH, recList, folH, grid);
+      fillPodHome(lib, upH, upList, recH, recList);
     }
-    const h2 = document.createElement('h2'); h2.className = 'secttl'; h2.textContent = 'חיפוש פודקאסטים';
+    const h2 = secTitle('חיפוש פודקאסטים');
     const res = document.createElement('div'); res.id = 'podResults'; res.className = 'podgrid';
     box.append(h2, res);
     if (podView.lastResults) podView.lastResults.forEach(s => res.appendChild(podCard(s)));
+  }
+
+  // Up Next (in-progress episodes) + Recent episodes across followed shows.
+  async function fillPodHome(lib, upH, upList, recH, recList) {
+    const perShow = await Promise.all(lib.slice(0, 8).map(async s => {
+      try {
+        const d = await loadShow(s.id, 12);
+        const meta = d.show ? showMeta(d.show) : {};
+        return { show: { ...s, ...meta, id: s.id }, eps: d.episodes };
+      } catch { return { show: s, eps: [] }; }
+    }));
+    if (podView.mode !== 'home') return;
+    const pos = st().podPos;
+    const upn = [], rec = [];
+    perShow.forEach(({ show, eps }) => {
+      const tracks = eps.map(e2 => epToTrack(show, e2));
+      eps.forEach((ep, i) => {
+        const id = 'pod:' + show.id + ':' + ep.trackId;
+        const p = pos[id] || 0;
+        const dur = Math.round((ep.trackTimeMillis || 0) / 1000);
+        if (p > 5 && (!dur || p < dur - 8)) upn.push({ show, ep, queue: tracks, qi: i, left: dur ? dur - p : 1e9 });
+        rec.push({ show, ep, queue: tracks, qi: i });
+      });
+    });
+    upn.sort((a, b) => a.left - b.left);
+    rec.sort((a, b) => new Date(b.ep.releaseDate) - new Date(a.ep.releaseDate));
+    if (upn.length) {
+      upH.hidden = false;
+      upn.slice(0, 5).forEach(({ show, ep, queue, qi }) => upList.appendChild(epRow(show, ep, { showName: true, noDesc: true, queue: queue.slice(qi) })));
+    }
+    if (rec.length) {
+      recH.hidden = false;
+      rec.slice(0, 8).forEach(({ show, ep, queue, qi }) => recList.appendChild(epRow(show, ep, { showName: true, noDesc: true, queue: queue.slice(qi) })));
+    }
   }
 
   async function runPodSearch() {
@@ -103,42 +169,22 @@
   function renderShow() {
     const box = $('podBody'); if (!box || podView.mode !== 'show') return;
     const s = podView.show;
-    const eps = podView.episodes.slice().sort((a, b) => (podView.sortNew ? 1 : -1) * (new Date(a.releaseDate) - new Date(b.releaseDate)));
+    const eps = podView.episodes.slice().sort((a, b) => (podView.sortNew ? -1 : 1) * (new Date(a.releaseDate) - new Date(b.releaseDate)));
     box.innerHTML = '';
-    const head = document.createElement('div'); head.className = 'podhero';
+    const head = document.createElement('div'); head.className = 'podhero podhero2';
     head.innerHTML = `
       <button class="pageback" id="podBack"><svg><use href="#i-chev-back"/></svg></button>
       <img class="podheroart" src="${esc(s.art || '')}" alt="">
-      <div class="podherometa">
-        <h2>${esc(s.name || '')}</h2>
-        <div class="dim">${esc(s.artist || '')}</div>
-        <div class="podheroactions">
-          <button id="podFollow" class="ppill">${followed(s.id) ? 'עוקב ✓' : 'עקוב'}</button>
-          <button id="podSort" class="ppill">${podView.sortNew ? 'חדש קודם' : 'ישן קודם'}</button>
-        </div>
-      </div>`;
+      <h2>${esc(s.name || '')}</h2>
+      <div class="podheroartist">${esc(s.artist || '')}</div>
+      <button id="podFollow" class="ppill podfollow">${followed(s.id) ? '<svg class="pck"><use href="#i-check"/></svg>עוקב' : 'עקוב'}</button>`;
+    const sec = document.createElement('div'); sec.className = 'podsechead';
+    sec.innerHTML = `<h2 class="secttl">פרקים</h2><button id="podSort" class="podsort">${podView.sortNew ? 'החדש ביותר' : 'הישן ביותר'}<svg><use href="#i-chev-down"/></svg></button>`;
     const list = document.createElement('div'); list.className = 'tracklist';
     if (!eps.length) list.innerHTML = '<div class="dim podnote">לא נמצאו פרקים בקטלוג.</div>';
-    eps.forEach(ep => {
-      const t = epToTrack(s, ep);
-      window.avi.podArtMap[t.id] = t.pod.art;
-      const pos = st().podPos[t.id] || 0;
-      const row = document.createElement('button');
-      row.type = 'button'; row.className = 'trackrow podrow';
-      row.innerHTML = `
-        <div class="podrowmeta">
-          <span class="t">${esc(t.title)}</span>
-          <span class="a dim">${fmtDate(ep.releaseDate)}${t.dur ? ' · ' + fmtDur(t.dur) : ''}${pos && t.dur ? ' · נשאר ' + fmtDur(Math.max(0, t.dur - pos)) : ''}</span>
-          ${ep.description ? `<span class="d dim">${esc(String(ep.description).replace(/<[^>]+>/g, ' ').slice(0, 140))}</span>` : ''}
-        </div>
-        <svg class="podplay"><use href="#i-play"/></svg>`;
-      row.addEventListener('click', () => {
-        const tracks = eps.map(e2 => epToTrack(s, e2));
-        window.avi.playQueue(tracks, tracks.findIndex(x => x.id === t.id));
-      });
-      list.appendChild(row);
-    });
-    box.append(head, list);
+    const tracks = eps.map(e2 => epToTrack(s, e2));
+    eps.forEach((ep, i) => list.appendChild(epRow(s, ep, { queue: tracks.slice(i) })));
+    box.append(head, sec, list);
     $('podBack').addEventListener('click', () => { podView = { mode: 'home', show: null, episodes: [], sortNew: true, lastResults: podView.lastResults }; renderPodHome(); });
     $('podFollow').addEventListener('click', () => {
       const lib = st().podLib;

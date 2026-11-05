@@ -384,13 +384,13 @@ function save() {
 function pushHistory(t) {
   if (!t || !t.id) return;
   state.history = state.history.filter(x => x.id !== t.id);
-  state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch, album: t.album || null });
+  state.history.unshift({ id: t.id, title: t.title, artist: t.artist, dur: t.dur, ch: t.ch, album: t.album || null, pod: t.pod || null });
   if (state.history.length > 60) state.history.length = 60;
 }
 function recordPlayed(t) {
   if (!t?.id) return;
   state.playedHistory ||= [];
-  state.playedHistory.unshift({id:t.id,title:t.title,artist:t.artist,dur:t.dur,ch:t.ch,album:t.album||null});
+  state.playedHistory.unshift({id:t.id,title:t.title,artist:t.artist,dur:t.dur,ch:t.ch,album:t.album||null,pod:t.pod||null});
   state.playedHistory.length = Math.min(state.playedHistory.length,60);
 }
 const favList = () => state.playlists['שירים אהובים'] || (state.playlists['שירים אהובים'] = []);
@@ -486,7 +486,7 @@ const pendingSeek = new WeakMap();
 function seekWhenReady(el, seconds) {
   const pos = Math.max(0, Number(seconds) || 0);
   if (!pos) return;
-  const record = { pos, src: el.currentSrc || el.src };
+  const record = { pos, src: el.src };  // el.src updates synchronously; currentSrc can still point at the previous episode here
   pendingSeek.set(el, record);
   const apply = () => {
     if (pendingSeek.get(el) !== record || (el.currentSrc || el.src) !== record.src) return;
@@ -763,7 +763,6 @@ function onPlayerState(st) {
   else if (st === YT.PlayerState.PAUSED) { syncPlayUI(true); }
   else if (st === YT.PlayerState.ENDED) { if (engine === 'yt') advance(1, true); }
 }
-let errGuard = 0;
 function onTrackError() {
   const t = current();
   if (restoreAttempt) {
@@ -772,10 +771,9 @@ function onTrackError() {
     syncPlayUI(true);
     return;
   }
-  toast(`השיר "${t ? t.title : ''}" לא זמין לנגינה מוטמעת - מדלג`);
-  errGuard++;
-  if (errGuard < 8) setTimeout(() => advance(1, true), 700);
-  setTimeout(() => { errGuard = 0; }, 15000);
+  // Playback failure never auto-skips to another song or episode: stop plainly.
+  toast(`"${t ? t.title : ''}" אינו זמין כרגע לניגון. לא עברנו לשיר אחר.`);
+  syncPlayUI(true);
 }
 
 
