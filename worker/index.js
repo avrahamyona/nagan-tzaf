@@ -41,13 +41,16 @@ function json(obj, status = 200) {
   });
 }
 
-async function extractFormat(vid) {
+async function extractFormat(vid, bust = false) {
   const cache = caches.default;
   const key = new Request(`https://avi-music-cache.local/fmt-v4/${vid}`);
-  const hit = await cache.match(key);
-  if (hit) {
-    const j = await hit.json();
-    if (j.exp > Date.now()) return j.fmt;
+  if (bust) { try { await cache.delete(key); } catch (e) { /* best effort */ } }
+  else {
+    const hit = await cache.match(key);
+    if (hit) {
+      const j = await hit.json();
+      if (j.exp > Date.now()) return j.fmt;
+    }
   }
   for (let pass = 0; pass < 2; pass++)
   for (const client of CLIENTS) {
@@ -110,7 +113,9 @@ async function fetchChunk(url, start, end) {
   return r.body;
 }
 
-function streamAudio(fmt, rangeHeader) {
+async function streamAudio(fmtInitial, rangeHeader, vid) {
+  let fmt = fmtInitial;
+  let reextracted = false;
   let start = 0;
   let end = fmt.contentLength > 0 ? fmt.contentLength - 1 : MAX_BYTES - 1;
   let partial = false;
@@ -123,6 +128,32 @@ function streamAudio(fmt, rangeHeader) {
     }
   }
   end = Math.min(end, start + MAX_BYTES - 1);
+  // Probe one byte before committing response headers. A dead cached source
+  // can answer 200 with an empty body; detect that here so a re-extracted
+  // format with a different length never contradicts the committed
+  // Content-Length / Content-Range.
+  if (vid) {
+    let live = false;
+    for (let attempt = 0; attempt < 2 && !live; attempt++) {
+      try {
+        const probe = await fetchChunk(fmt.url, start, start);
+        const pr = probe.getReader();
+        const first = await pr.read();
+        try { await pr.cancel(); } catch (e) { /* ignore */ }
+        live = !first.done && first.value && first.value.length > 0;
+      } catch (e) { /* fall through to re-extract */ }
+      if (!live) {
+        if (attempt === 0) {
+          reextracted = true;
+          fmt = await extractFormat(vid, true);
+          if (fmt.contentLength > 0) end = Math.min(end, fmt.contentLength - 1);
+          if (end < start) throw new Error('range beyond refreshed source');
+        } else {
+          throw new Error('empty upstream chunk');
+        }
+      }
+    }
+  }
   const total = end - start + 1;
   let pos = start;
   let cancelled = false;
@@ -131,12 +162,34 @@ function streamAudio(fmt, rangeHeader) {
       if (cancelled || pos > end) { controller.close(); return; }
       const chunkEnd = Math.min(pos + CHUNK - 1, end);
       try {
-        const body = await fetchChunk(fmt.url, pos, chunkEnd);
-        const reader = body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          controller.enqueue(value);
+        // An anti-bot/dead cached source can answer 200 with a zero-byte body.
+        // Detect it, drop the cached format, re-extract once, and retry once;
+        // only then fail the stream so the client can fail over.
+        let delivered = 0;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          delivered = 0;
+          const body = await fetchChunk(fmt.url, pos, chunkEnd);
+          const reader = body.getReader();
+          const bufs = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            delivered += value.length;
+            bufs.push(value);
+          }
+          if (delivered > 0) { for (const b of bufs) controller.enqueue(b); break; }
+          if (attempt === 0 && vid && !reextracted) {
+            reextracted = true;
+            try {
+              fmt = await extractFormat(vid, true);
+              // Never deliver past the refreshed length: headers already
+              // committed a total, so the range may only shrink here.
+              if (fmt.contentLength > 0) end = Math.min(end, fmt.contentLength - 1);
+              if (pos > end) { controller.close(); return; }
+            } catch (e) { /* keep old fmt */ }
+            continue;
+          }
+          throw new Error('empty upstream chunk');
         }
         pos = chunkEnd + 1;
         if (pos > end) controller.close();
@@ -514,7 +567,7 @@ export default {
       if (kind === 'url') {
         return json({ url: `${url.origin}/audio/${vid}`, mime: fmt.mime, bitrate: fmt.bitrate });
       }
-      return streamAudio(fmt, request.headers.get('Range'));
+      return await streamAudio(fmt, request.headers.get('Range'), vid);
     } catch (e) {
       return json({ error: String(e && e.message || e) }, 502);
     }
